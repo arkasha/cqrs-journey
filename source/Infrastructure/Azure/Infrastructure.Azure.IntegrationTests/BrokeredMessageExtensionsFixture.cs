@@ -15,6 +15,7 @@ namespace Infrastructure.Azure.IntegrationTests
 {
     using System;
     using System.Diagnostics;
+    using System.Threading.Tasks;
     using Infrastructure.Azure.Utils;
     using Microsoft.ServiceBus.Messaging;
     using Moq;
@@ -31,8 +32,7 @@ namespace Infrastructure.Azure.IntegrationTests
 
             BrokeredMessageExtensions
                 .SafeMessagingActionAsync(
-                   c => c(Mock.Of<IAsyncResult>()),
-                   ar => { if (++endCounts < 2) throw new TimeoutException(); },
+                   new Task(() => { if (++endCounts < 2) throw new TimeoutException(); }),
                    new BrokeredMessage(),
                    s => success = s,
                    "error: '{0}' '{1}' '{2}' '{3}' '{4}' '{5}' '{6}'",
@@ -56,8 +56,7 @@ namespace Infrastructure.Azure.IntegrationTests
 
             BrokeredMessageExtensions
                 .SafeMessagingActionAsync(
-                   c => c(Mock.Of<IAsyncResult>()),
-                   ar => { throw new TimeoutException(); },
+                   new Task(() => { throw new TimeoutException(); }), 
                    new BrokeredMessage(),
                    s => success = s,
                    "error: '{0}' '{1}' '{2}' '{3}' '{4}' '{5}' '{6}'",

@@ -21,8 +21,7 @@ namespace Infrastructure.Azure.Messaging
     using Infrastructure.Azure.Messaging.Handling;
     using Infrastructure.Messaging.Handling;
     using Infrastructure.Serialization;
-    using Microsoft.Practices.EnterpriseLibrary.WindowsAzure.TransientFaultHandling.ServiceBus;
-    using Microsoft.Practices.TransientFaultHandling;
+    using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
     using Microsoft.ServiceBus;
     using Microsoft.ServiceBus.Messaging;
 

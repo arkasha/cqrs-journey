@@ -13,8 +13,10 @@
 
 namespace Infrastructure.Azure.MessageLog
 {
+    using System.Threading.Tasks;
+
     public interface IAzureMessageLogWriter
     {
-        void Save(MessageLogEntity entity);
+        Task Save(MessageLogEntity entity);
     }
 }

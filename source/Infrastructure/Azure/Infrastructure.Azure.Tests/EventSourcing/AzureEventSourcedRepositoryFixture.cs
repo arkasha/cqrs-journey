@@ -18,6 +18,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
     using System.IO;
     using System.Linq;
     using System.Runtime.Caching;
+    using System.Threading.Tasks;
     using Infrastructure.Azure.EventSourcing;
     using Infrastructure.Azure.Tests.Mocks;
     using Infrastructure.EventSourcing;
@@ -162,7 +163,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
         private Guid id;
 
         [Fact]
-        public void when_reading_entity_then_rehydrates()
+        public async Task when_reading_entity_then_rehydrates()
         {
             var events = new IVersionedEvent[]
                              {
@@ -172,10 +173,10 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
             var serialized = events.Select(x => new EventData { Version = x.Version, Payload = Serialize(x) });
             this.id = Guid.NewGuid();
             var eventStore = new Mock<IEventStore>();
-            eventStore.Setup(x => x.Load(It.IsAny<string>(), It.IsAny<int>())).Returns(serialized);
+            eventStore.Setup(x => x.Load(It.IsAny<string>(), It.IsAny<int>())).Returns(Task.FromResult(serialized));
             var sut = new AzureEventSourcedRepository<TestEntity>(eventStore.Object, Mock.Of<IEventStoreBusPublisher>(), new JsonTextSerializer(), new StandardMetadataProvider(), null);
 
-            var entity = sut.Find(id);
+            var entity = await sut.Find(id);
 
             Assert.NotNull(entity);
             Assert.Equal(id, entity.Id);
@@ -197,7 +198,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
         private IMemento memento;
 
         [Fact]
-        public void when_reading_entity_then_rehydrates()
+        public async Task when_reading_entity_then_rehydrates()
         {
             var newEvents = new IVersionedEvent[]
                              {
@@ -210,10 +211,10 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
             var cache = new MemoryCache(Guid.NewGuid().ToString());
             cache.Add("TestOriginatorEntity_" + id.ToString(), new Tuple<IMemento, DateTime?>(this.memento, null), DateTimeOffset.UtcNow.AddMinutes(10));
 
-            eventStore.Setup(x => x.Load(It.IsAny<string>(), 2)).Returns(serialized);
+            eventStore.Setup(x => x.Load(It.IsAny<string>(), 2)).Returns(Task.FromResult(serialized));
             var sut = new AzureEventSourcedRepository<TestOriginatorEntity>(eventStore.Object, Mock.Of<IEventStoreBusPublisher>(), new JsonTextSerializer(), new StandardMetadataProvider(), cache);
 
-            var entity = sut.Find(id);
+            var entity = await sut.Find(id);
 
             Assert.NotNull(entity);
             Assert.Equal(id, entity.Id);
@@ -250,9 +251,9 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
         }
 
         [Fact]
-        public void when_getting_then_throws()
+        public async Task when_getting_then_throws()
         {
-            var actual = Assert.Throws<EntityNotFoundException>(() => sut.Get(id));
+            var actual = await Assert.ThrowsAsync<EntityNotFoundException>(() => sut.Get(id));
             Assert.Equal(id, actual.EntityId);
             Assert.Equal("TestEntity", actual.EntityType);
         }

@@ -20,13 +20,11 @@ namespace Infrastructure.Azure.IntegrationTests.ServiceBusConfigFixture
     using Infrastructure.Messaging;
     using Infrastructure.Messaging.Handling;
     using Infrastructure.Serialization;
-    using Microsoft.Practices.EnterpriseLibrary.WindowsAzure.TransientFaultHandling.ServiceBus;
-    using Microsoft.Practices.TransientFaultHandling;
     using Microsoft.ServiceBus;
     using Microsoft.ServiceBus.Messaging;
     using Moq;
     using Xunit;
-
+    using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
     public class given_service_bus_config : IDisposable
     {
         private ServiceBusSettings settings;
@@ -78,10 +76,10 @@ namespace Infrastructure.Azure.IntegrationTests.ServiceBusConfigFixture
             this.sut.Initialize();
 
             var topics = this.settings.Topics.Select(topic => new
-                {
-                    Topic = topic,
-                    Description = this.retryPolicy.ExecuteAction(() => this.namespaceManager.GetTopic(topic.Path))
-                }).ToList();
+            {
+                Topic = topic,
+                Description = this.retryPolicy.ExecuteAction(() => this.namespaceManager.GetTopic(topic.Path))
+            }).ToList();
 
             Assert.False(topics.Any(tuple => tuple.Description == null));
         }
@@ -94,11 +92,11 @@ namespace Infrastructure.Azure.IntegrationTests.ServiceBusConfigFixture
             var subscriptions = this.settings.Topics
                 .SelectMany(topic => topic.Subscriptions.Select(subscription => new { Topic = topic, Subscription = subscription }))
                 .Select(tuple => new
-                    {
-                        Subscription = tuple.Subscription,
-                        Description = this.retryPolicy.ExecuteAction(() => this.namespaceManager.GetSubscription(tuple.Topic.Path, tuple.Subscription.Name)),
-                        Rule = this.retryPolicy.ExecuteAction(() => this.namespaceManager.GetRules(tuple.Topic.Path, tuple.Subscription.Name).FirstOrDefault(x => x.Name == "Custom"))
-                    }).ToList();
+                {
+                    Subscription = tuple.Subscription,
+                    Description = this.retryPolicy.ExecuteAction(() => this.namespaceManager.GetSubscription(tuple.Topic.Path, tuple.Subscription.Name)),
+                    Rule = this.retryPolicy.ExecuteAction(() => this.namespaceManager.GetRules(tuple.Topic.Path, tuple.Subscription.Name).FirstOrDefault(x => x.Name == "Custom"))
+                }).ToList();
 
             Assert.True(subscriptions.All(tuple => tuple.Description != null));
             Assert.True(subscriptions.All(tuple => tuple.Subscription.RequiresSession == tuple.Description.RequiresSession));

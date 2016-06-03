@@ -17,9 +17,7 @@ namespace Infrastructure.Azure.Tests
     using Infrastructure.Azure.Messaging;
     using Infrastructure.Azure.Messaging.Handling;
     using Infrastructure.Serialization;
-    using Microsoft.ServiceBus.Messaging;
     using Moq;
-    using Moq.Protected;
     using Xunit;
 
     public class MessageProcessorFixture

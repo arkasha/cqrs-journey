@@ -21,11 +21,13 @@ namespace Infrastructure.Azure.EventSourcing
     using System.Linq;
     using System.Net;
     using System.Threading;
+    using System.Threading.Tasks;
     using AutoMapper;
-    using Microsoft.Practices.EnterpriseLibrary.WindowsAzure.TransientFaultHandling.AzureStorage;
-    using Microsoft.Practices.TransientFaultHandling;
-    using Microsoft.WindowsAzure;
-    using Microsoft.WindowsAzure.StorageClient;
+    using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
+    using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.RetryPolicies;
+    using Microsoft.WindowsAzure.Storage.Table;
+    using Microsoft.WindowsAzure.Storage.Table.Queryable;
 
     /// <summary>
     /// Implements an event store using Windows Azure Table Storage.
@@ -34,7 +36,7 @@ namespace Infrastructure.Azure.EventSourcing
     /// <para> This class works closely related to <see cref="EventStoreBusPublisher"/> and <see cref="AzureEventSourcedRepository{T}"/>, and provides a resilient mechanism to 
     /// store events, and also manage which events are pending for publishing to an event bus.</para>
     /// <para>Ideally, it would be very valuable to provide asynchronous APIs to avoid blocking I/O calls.</para>
-    /// <para>See <see cref="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see> for more potential performance and scalability optimizations.</para>
+    /// <para>See <see href="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see> for more potential performance and scalability optimizations.</para>
     /// </remarks>
     public class EventStore : IEventStore, IPendingEventsQueue
     {
@@ -44,13 +46,13 @@ namespace Infrastructure.Azure.EventSourcing
         private readonly CloudStorageAccount account;
         private readonly string tableName;
         private readonly CloudTableClient tableClient;
-        private readonly Microsoft.Practices.TransientFaultHandling.RetryPolicy pendingEventsQueueRetryPolicy;
-        private readonly Microsoft.Practices.TransientFaultHandling.RetryPolicy eventStoreRetryPolicy;
+        private readonly Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling.RetryPolicy pendingEventsQueueRetryPolicy;
+        private readonly Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling.RetryPolicy eventStoreRetryPolicy;
 
         static EventStore()
         {
-            Mapper.CreateMap<EventTableServiceEntity, EventData>();
-            Mapper.CreateMap<EventData, EventTableServiceEntity>();
+            Mapper.CreateMap<EventTableEntity, EventData>();
+            Mapper.CreateMap<EventData, EventTableEntity>();
         }
 
         public EventStore(CloudStorageAccount account, string tableName)
@@ -62,7 +64,7 @@ namespace Infrastructure.Azure.EventSourcing
             this.account = account;
             this.tableName = tableName;
             this.tableClient = account.CreateCloudTableClient();
-            this.tableClient.RetryPolicy = RetryPolicies.NoRetry();
+            this.tableClient.DefaultRequestOptions.RetryPolicy = new NoRetry();
 
             // TODO: This could be injected.
             var backgroundRetryStrategy = new ExponentialBackoff(10, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(1));
@@ -84,7 +86,9 @@ namespace Infrastructure.Azure.EventSourcing
                 e.LastException.Message,
                 e.CurrentRetryCount);
 
-            this.eventStoreRetryPolicy.ExecuteAction(() => tableClient.CreateTableIfNotExist(tableName));
+            var tableReference = this.tableClient.GetTableReference(tableName);
+
+            this.eventStoreRetryPolicy.ExecuteAction(() => tableReference.CreateIfNotExists());
         }
 
         /// <summary>
@@ -92,7 +96,7 @@ namespace Infrastructure.Azure.EventSourcing
         /// </summary>
         public event EventHandler Retrying;
 
-        public IEnumerable<EventData> Load(string partitionKey, int version)
+        public async Task<IEnumerable<EventData>> Load(string partitionKey, int version)
         {
             var minRowKey = version.ToString("D10");
             var query = this.GetEntitiesQuery(partitionKey, minRowKey, RowKeyVersionUpperLimit);
@@ -101,44 +105,44 @@ namespace Infrastructure.Azure.EventSourcing
             return all.Select(x => Mapper.Map(x, new EventData { Version = int.Parse(x.RowKey) }));
         }
 
-        public void Save(string partitionKey, IEnumerable<EventData> events)
+        public async Task Save(string partitionKey, IEnumerable<EventData> events)
         {
-            var context = this.tableClient.GetDataServiceContext();
+            var table = this.tableClient.GetTableReference(this.tableName);
+
+            var batchOperation = new TableBatchOperation();
+
             foreach (var eventData in events)
             {
                 string creationDate = DateTime.UtcNow.ToString("o");
                 var formattedVersion = eventData.Version.ToString("D10");
-                context.AddObject(
-                    this.tableName,
-                    Mapper.Map(eventData, new EventTableServiceEntity
-                        {
-                            PartitionKey = partitionKey,
-                            RowKey = formattedVersion,
-                            CreationDate = creationDate,
-                        }));
+
+                batchOperation.Insert(Mapper.Map(eventData, new EventTableEntity
+                {
+                    PartitionKey = partitionKey,
+                    RowKey = formattedVersion,
+                    CreationDate = creationDate,
+                }));
 
                 // Add a duplicate of this event to the Unpublished "queue"
-                context.AddObject(
-                    this.tableName,
-                    Mapper.Map(eventData, new EventTableServiceEntity
-                        {
-                            PartitionKey = partitionKey,
-                            RowKey = UnpublishedRowKeyPrefix + formattedVersion,
-                            CreationDate = creationDate,
-                        }));
+                batchOperation.Insert(Mapper.Map(eventData, new EventTableEntity
+                {
+                    PartitionKey = partitionKey,
+                    RowKey = UnpublishedRowKeyPrefix + formattedVersion,
+                    CreationDate = creationDate,
+                }));
             }
 
             try
             {
-                this.eventStoreRetryPolicy.ExecuteAction(() => context.SaveChanges(SaveChangesOptions.Batch));
+                await this.eventStoreRetryPolicy.ExecuteAction(() => table.ExecuteBatchAsync(batchOperation));
             }
-            catch (DataServiceRequestException ex)
+            catch (Exception ex)
             {
-                var inner = ex.InnerException as DataServiceClientException;
-                if (inner != null && inner.StatusCode == (int)HttpStatusCode.Conflict)
-                {
-                    throw new ConcurrencyException();
-                }
+                //var inner = ex.InnerException as DataServiceClientException;
+                //if (inner != null && inner.StatusCode == (int)HttpStatusCode.Conflict)
+                //{
+                //    throw new ConcurrencyException();
+                //}
 
                 throw;
             }
@@ -152,19 +156,22 @@ namespace Infrastructure.Azure.EventSourcing
         /// The first argument of the callback is the list of pending events.
         /// The second argument is true if there are more records that were not retrieved.</param>
         /// <param name="exceptionCallback">The callback used if there is an exception that does not allow to continue.</param>
-        public void GetPendingAsync(string partitionKey, Action<IEnumerable<IEventRecord>, bool> successCallback, Action<Exception> exceptionCallback)
+        public async Task GetPendingAsync(string partitionKey, Action<IEnumerable<IEventRecord>, TableContinuationToken> successCallback, Action<Exception> exceptionCallback)
         {
             var query = this.GetEntitiesQuery(partitionKey, UnpublishedRowKeyPrefix, UnpublishedRowKeyPrefixUpperLimit);
-            this.pendingEventsQueueRetryPolicy
-                .ExecuteAction(
-                    ac => query.BeginExecuteSegmented(ac, null),
-                    ar => query.EndExecuteSegmented(ar),
-                    rs =>
-                    {
-                        var all = rs.Results.ToList();
-                        successCallback(rs.Results, rs.HasMoreResults);
-                    },
-                    exceptionCallback);
+            await this.pendingEventsQueueRetryPolicy.ExecuteAsync(() => query.ExecuteSegmentedAsync(null)).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    exceptionCallback(t.Exception.InnerException);
+                }
+                else if (t.IsCompleted)
+                {
+                    var rs = t.Result;
+                    var all = rs.Results.ToList();
+                    successCallback(rs.Results, rs.ContinuationToken);
+                }
+            });
         }
 
         /// <summary>
@@ -176,106 +183,80 @@ namespace Infrastructure.Azure.EventSourcing
         /// The argument specifies if the row was deleted. If false, it means that the row did not exist.
         /// </param>
         /// <param name="exceptionCallback">The callback used if there is an exception that does not allow to continue.</param>
-        public void DeletePendingAsync(string partitionKey, string rowKey, Action<bool> successCallback, Action<Exception> exceptionCallback)
+        public async Task DeletePendingAsync(string partitionKey, string rowKey, Action<bool> successCallback, Action<Exception> exceptionCallback)
         {
-            var context = this.tableClient.GetDataServiceContext();
-            var item = new EventTableServiceEntity { PartitionKey = partitionKey, RowKey = rowKey };
-            context.AttachTo(this.tableName, item, "*");
-            context.DeleteObject(item);
+            var table = this.tableClient.GetTableReference(this.tableName);
+            var item = new EventTableEntity { PartitionKey = partitionKey, RowKey = rowKey };
 
-            this.pendingEventsQueueRetryPolicy.ExecuteAction(
-                ac => context.BeginSaveChanges(ac, null),
-                ar => 
-                    {
-                        try
-                        {
-                            context.EndSaveChanges(ar);
-                            return true;
-                        }
-                        catch (DataServiceRequestException ex)
-                        {
-                            // ignore if entity was already deleted.
-                            var inner = ex.InnerException as DataServiceClientException;
-                            if (inner == null || inner.StatusCode != (int)HttpStatusCode.NotFound)
-                            {
-                                throw;
-                            }
+            var operation = TableOperation.Delete(item);
 
-                            return false;
-                        }
-                    },
-                successCallback,
-                exceptionCallback);
+            await this.pendingEventsQueueRetryPolicy.ExecuteAsync(() => table.ExecuteAsync(operation)).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    exceptionCallback(t.Exception.InnerException);
+                }
+                else if (!t.IsCanceled)
+                {
+                    successCallback(t.Result.HttpStatusCode == (int)HttpStatusCode.OK);
+                }
+            });
         }
 
         /// <summary>
         /// Gets the list of all partitions that have pending unpublished events.
         /// </summary>
         /// <returns>The list of all partitions.</returns>
-        public IEnumerable<string> GetPartitionsWithPendingEvents()
+        public async Task<IEnumerable<string>> GetPartitionsWithPendingEvents()
         {
-            var context = this.tableClient.GetDataServiceContext();
-            var query = context
-                .CreateQuery<EventTableServiceEntity>(this.tableName)
-                .Where(
-                    x =>
-                    x.RowKey.CompareTo(UnpublishedRowKeyPrefix) >= 0 &&
-                    x.RowKey.CompareTo(UnpublishedRowKeyPrefixUpperLimit) <= 0)
-                .Select(x => new { x.PartitionKey })
-                .AsTableServiceQuery();
+            var table = this.tableClient.GetTableReference(this.tableName);
+
+            var query = table.CreateQuery<EventTableEntity>()
+                             .Where(
+                                 x =>
+                                     x.RowKey.CompareTo(UnpublishedRowKeyPrefix) >= 0 &&
+                                     x.RowKey.CompareTo(UnpublishedRowKeyPrefixUpperLimit) <= 0)
+                             .Select(x => x.PartitionKey).AsTableQuery();
 
             var result = new BlockingCollection<string>();
             var tokenSource = new CancellationTokenSource();
+            TableContinuationToken continuationToken = null;
 
-            this.pendingEventsQueueRetryPolicy.ExecuteAction(
-                ac => query.BeginExecuteSegmented(ac, null),
-                ar => query.EndExecuteSegmented(ar),
-                rs =>
+            do
+            {
+                try
                 {
-                    foreach (var key in rs.Results.Select(x => x.PartitionKey).Distinct())
+                    var segment = await this.pendingEventsQueueRetryPolicy.ExecuteAsync(() => query.ExecuteSegmentedAsync(null));
+                    foreach (var key in segment.Results.Distinct())
                     {
                         result.Add(key);
                     }
 
-                    while (rs.HasMoreResults)
-                    {
-                        try
-                        {
-                            rs = this.pendingEventsQueueRetryPolicy.ExecuteAction(() => rs.GetNext());
-                            foreach (var key in rs.Results.Select(x => x.PartitionKey).Distinct())
-                            {
-                                result.Add(key);
-                            }
-                        }
-                        catch
-                        {
-                            // Cancel is to force an exception being thrown in the consuming enumeration thread
-                            // TODO: is there a better way to get the correct exception message instead of an OperationCancelledException in the consuming thread?
-                            tokenSource.Cancel();
-                            throw;
-                        }
-                    }
-                    result.CompleteAdding();
-                },
-                ex =>
+                    continuationToken = segment.ContinuationToken;
+                }
+                catch
                 {
                     tokenSource.Cancel();
-                    throw ex;
-                });
+                    throw;
+                }
+            } while (continuationToken != null);
+
+            result.CompleteAdding();
 
             return result.GetConsumingEnumerable(tokenSource.Token);
         }
 
-        private CloudTableQuery<EventTableServiceEntity> GetEntitiesQuery(string partitionKey, string minRowKey, string maxRowKey)
+        private TableQuery<EventTableEntity> GetEntitiesQuery(string partitionKey, string minRowKey, string maxRowKey)
         {
-            var context = this.tableClient.GetDataServiceContext();
-            var query = context
-                .CreateQuery<EventTableServiceEntity>(this.tableName)
+            var table = this.tableClient.GetTableReference(this.tableName);
+
+            var query = table
+                .CreateQuery<EventTableEntity>()
                 .Where(
                     x =>
                     x.PartitionKey == partitionKey && x.RowKey.CompareTo(minRowKey) >= 0 && x.RowKey.CompareTo(maxRowKey) <= 0);
 
-            return query.AsTableServiceQuery();
+            return query.AsTableQuery();
         }
     }
 }

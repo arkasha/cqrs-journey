@@ -14,6 +14,7 @@
 namespace Infrastructure.Azure.EventSourcing
 {
     using System.Threading;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// Represents a process that reliably publishes events that are marked as pending in an event store.
@@ -30,6 +31,6 @@ namespace Infrastructure.Azure.EventSourcing
         /// </summary>
         /// <param name="partitionKey">The partition key or session ID.</param>
         /// <param name="eventCount">A hint that specifies how many new events are pending.</param>
-        void SendAsync(string partitionKey, int eventCount);
+        Task SendAsync(string partitionKey, int eventCount);
     }
 }

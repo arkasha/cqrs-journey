@@ -14,7 +14,6 @@
 namespace Infrastructure.Azure.Messaging
 {
     using System;
-    using System.Collections.Generic;
     using Microsoft.ServiceBus.Messaging;
 
     /// <summary>

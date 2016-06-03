@@ -19,8 +19,9 @@ namespace Infrastructure.Azure.MessageLog
     using Infrastructure.MessageLog;
     using Infrastructure.Messaging;
     using Infrastructure.Serialization;
-    using Microsoft.WindowsAzure;
-    using Microsoft.WindowsAzure.StorageClient;
+    using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.Table;
+    using Microsoft.WindowsAzure.Storage.Table.Queryable;
 
     public class AzureEventLogReader : IEventLogReader
     {
@@ -47,8 +48,9 @@ namespace Infrastructure.Azure.MessageLog
         // expose events.
         public IEnumerable<IEvent> Query(QueryCriteria criteria)
         {
-            var context = this.tableClient.GetDataServiceContext();
-            var query = (IQueryable<MessageLogEntity>)context.CreateQuery<MessageLogEntity>(this.tableName)
+            var table = this.tableClient.GetTableReference(this.tableName);
+            
+            var query = (IQueryable<MessageLogEntity>)table.CreateQuery<MessageLogEntity>()
                 .Where(x => x.Kind == StandardMetadata.EventKind);
 
             var where = criteria.ToExpression();
@@ -56,7 +58,7 @@ namespace Infrastructure.Azure.MessageLog
                 query = query.Where(where);
 
             return query
-                .AsTableServiceQuery()
+                .AsTableQuery()
                 .Execute()
                 .Select(e => this.serializer.Deserialize<IEvent>(e.Payload));
         }

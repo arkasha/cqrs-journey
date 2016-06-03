@@ -17,7 +17,6 @@ namespace Infrastructure.Azure.IntegrationTests.SendReceiveIntegration
     using System.Runtime.Serialization;
     using System.Threading;
     using Infrastructure.Azure.Messaging;
-    using Microsoft.Practices.TransientFaultHandling;
     using Microsoft.ServiceBus.Messaging;
     using Xunit;
 

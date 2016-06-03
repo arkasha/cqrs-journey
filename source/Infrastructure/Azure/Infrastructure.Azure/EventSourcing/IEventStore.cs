@@ -14,11 +14,12 @@
 namespace Infrastructure.Azure.EventSourcing
 {
     using System.Collections.Generic;
+    using System.Threading.Tasks;
 
     public interface IEventStore
     {
-        IEnumerable<EventData> Load(string partitionKey, int version);
+        Task<IEnumerable<EventData>> Load(string partitionKey, int version);
 
-        void Save(string partitionKey, IEnumerable<EventData> events);
+        Task Save(string partitionKey, IEnumerable<EventData> events);
     }
 }

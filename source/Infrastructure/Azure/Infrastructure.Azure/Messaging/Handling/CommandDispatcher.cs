@@ -15,8 +15,6 @@ namespace Infrastructure.Azure.Messaging.Handling
 {
     using System;
     using System.Collections.Generic;
-    using System.Diagnostics;
-    using System.Globalization;
     using System.Linq;
     using Infrastructure.Messaging;
     using Infrastructure.Messaging.Handling;

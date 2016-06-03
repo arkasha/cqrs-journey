@@ -16,12 +16,12 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Threading.Tasks;
     using Infrastructure.Azure.MessageLog;
     using Infrastructure.MessageLog;
     using Infrastructure.Messaging;
     using Infrastructure.Serialization;
-    using Microsoft.WindowsAzure;
-    using Microsoft.WindowsAzure.StorageClient;
+    using Microsoft.WindowsAzure.Storage;
     using Moq;
     using Xunit;
 
@@ -92,7 +92,7 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             Save(eventC, startEnqueueTime.AddMinutes(6));
         }
 
-        private void Save(IEvent @event, DateTime enqueueTime)
+        private async Task Save(IEvent @event, DateTime enqueueTime)
         {
             var message = new MessageLogEntity
             {
@@ -108,13 +108,14 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
                 message.GetType().GetProperty(metadata.Key).SetValue(message, metadata.Value, null);
             }
 
-            this.writer.Save(message);
+            await this.writer.Save(message);
         }
 
         public void Dispose()
         {
             var client = this.account.CreateCloudTableClient();
-            client.DeleteTableIfExist(this.tableName);
+            var table = client.GetTableReference(this.tableName);
+            table.DeleteIfExists();
         }
 
         [Fact]

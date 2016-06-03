@@ -17,6 +17,7 @@ namespace Infrastructure.Sql.EventSourcing
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
+    using System.Threading.Tasks;
     using Infrastructure.EventSourcing;
     using Infrastructure.Messaging;
     using Infrastructure.Serialization;
@@ -53,7 +54,7 @@ namespace Infrastructure.Sql.EventSourcing
             this.entityFactory = (id, events) => (T)constructor.Invoke(new object[] { id, events });
         }
 
-        public T Find(Guid id)
+        public async Task<T> Find(Guid id)
         {
             using (var context = this.contextFactory.Invoke())
             {
@@ -73,9 +74,9 @@ namespace Infrastructure.Sql.EventSourcing
             }
         }
 
-        public T Get(Guid id)
+        public async Task<T> Get(Guid id)
         {
-            var entity = this.Find(id);
+            var entity = await this.Find(id);
             if (entity == null)
             {
                 throw new EntityNotFoundException(id, sourceType);
@@ -84,7 +85,7 @@ namespace Infrastructure.Sql.EventSourcing
             return entity;
         }
 
-        public void Save(T eventSourced, string correlationId)
+        public async Task Save(T eventSourced, string correlationId)
         {
             // TODO: guarantee that only incremental versions of the event are stored
             var events = eventSourced.Events.ToArray();

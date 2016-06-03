@@ -18,9 +18,11 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
     using System.Diagnostics;
     using System.Linq;
     using System.Threading;
+    using System.Threading.Tasks;
     using Infrastructure.Azure.EventSourcing;
     using Infrastructure.Azure.Instrumentation;
     using Infrastructure.Azure.Tests.Mocks;
+    using Microsoft.WindowsAzure.Storage.Table;
     using Moq;
     using Xunit;
 
@@ -49,8 +51,8 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
                 && x.Namespace == "Namespace"
                 && x.FullName == "Namespace.TestEventType");
             this.queue = new Mock<IPendingEventsQueue>();
-            queue.Setup(x => x.GetPendingAsync(partitionKey, It.IsAny<Action<IEnumerable<IEventRecord>, bool>>(), It.IsAny<Action<Exception>>()))
-                .Callback<string, Action<IEnumerable<IEventRecord>, bool>, Action<Exception>>((key, success, error) => success(new[] { testEvent }, false));
+            queue.Setup(x => x.GetPendingAsync(partitionKey, It.IsAny<Action<IEnumerable<IEventRecord>, TableContinuationToken>>(), It.IsAny<Action<Exception>>()))
+                .Callback<string, Action<IEnumerable<IEventRecord>, TableContinuationToken>, Action<Exception>>((key, success, error) => success(new[] { testEvent }, null));
             this.sender = new MessageSenderMock();
             var sut = new EventStoreBusPublisher(sender, queue.Object, new MockEventStoreBusPublisherInstrumentation());
             var cancellationTokenSource = new CancellationTokenSource();
@@ -104,8 +106,8 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
 
             this.pendingKeys = new[] { "Key1", "Key2", "Key3" };
             this.queue = new Mock<IPendingEventsQueue>();
-            queue.Setup(x => x.GetPendingAsync(It.IsAny<string>(), It.IsAny<Action<IEnumerable<IEventRecord>, bool>>(), It.IsAny<Action<Exception>>()))
-                .Callback<string, Action<IEnumerable<IEventRecord>, bool>, Action<Exception>>(
+            queue.Setup(x => x.GetPendingAsync(It.IsAny<string>(), It.IsAny<Action<IEnumerable<IEventRecord>, TableContinuationToken>>(), It.IsAny<Action<Exception>>()))
+                .Callback<string, Action<IEnumerable<IEventRecord>, TableContinuationToken>, Action<Exception>>(
                 (key, success, error) => 
                     success(new[]
                            {
@@ -117,10 +119,10 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
                                         && x.SourceType == "TestSourceType"
                                         && x.Payload == "serialized event")
                            },
-                    false));
+                    null));
             
                 
-            queue.Setup(x => x.GetPartitionsWithPendingEvents()).Returns(pendingKeys);
+            queue.Setup(x => x.GetPartitionsWithPendingEvents()).Returns(Task.FromResult(pendingKeys.AsEnumerable()));
             this.sender = new MessageSenderMock();
             var sut = new EventStoreBusPublisher(sender, queue.Object, new MockEventStoreBusPublisherInstrumentation());
             var cancellationTokenSource = new CancellationTokenSource();
@@ -183,8 +185,8 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
 
             this.partitionKeys = Enumerable.Range(0, 200).Select(i => "Key" + i).ToArray();
             this.queue = new Mock<IPendingEventsQueue>();
-            queue.Setup(x => x.GetPendingAsync(It.IsAny<string>(), It.IsAny<Action<IEnumerable<IEventRecord>, bool>>(), It.IsAny<Action<Exception>>()))
-                .Callback<string, Action<IEnumerable<IEventRecord>, bool>, Action<Exception>>(
+            queue.Setup(x => x.GetPendingAsync(It.IsAny<string>(), It.IsAny<Action<IEnumerable<IEventRecord>, TableContinuationToken>>(), It.IsAny<Action<Exception>>()))
+                .Callback<string, Action<IEnumerable<IEventRecord>, TableContinuationToken>, Action<Exception>>(
                 (key, success, error) =>
                     success(new[]
                                 {
@@ -196,9 +198,9 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
                                             && x.SourceType == "TestSourceType"
                                             && x.Payload == "serialized event")
                                 },
-                    false));
+                    null));
 
-            queue.Setup(x => x.GetPartitionsWithPendingEvents()).Returns(Enumerable.Empty<string>());
+            queue.Setup(x => x.GetPartitionsWithPendingEvents()).Returns(Task.FromResult(Enumerable.Empty<string>()));
             queue
                 .Setup(x =>
                     x.DeletePendingAsync(

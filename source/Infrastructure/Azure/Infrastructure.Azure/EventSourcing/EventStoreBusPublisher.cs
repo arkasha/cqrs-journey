@@ -25,6 +25,7 @@ namespace Infrastructure.Azure.EventSourcing
     using Infrastructure.Azure.Instrumentation;
     using Infrastructure.Azure.Messaging;
     using Microsoft.ServiceBus.Messaging;
+    using Microsoft.WindowsAzure.Storage.Table;
 
     /// <summary>
     /// Publishes events in the <see cref="EventStore"/> to the service bus.
@@ -39,7 +40,7 @@ namespace Infrastructure.Azure.EventSourcing
     /// We could still make several performance improvements. For example, instead of sending 1 event per <see cref="BrokeredMessage"/> we could
     /// bundle several events for the same session into a single message, reducing the number of I/O calls to both the service bus and table storage, and
     /// it would also avoid waiting for a message to be completed before sending the next message for the same partition. This change would require some
-    /// changes in other components and the message metadata as well. See <see cref="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see>
+    /// changes in other components and the message metadata as well. See <see href="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see>
     /// for more potential performance and scalability optimizations.
     /// </para>
     /// </remarks>
@@ -101,9 +102,9 @@ namespace Infrastructure.Azure.EventSourcing
             // Query through all partitions to check for pending events, as there could be
             // stored events that were never published before the system was rebooted.
             Task.Factory.StartNew(
-                () =>
+                async () =>
                 {
-                    foreach (var partitionKey in this.queue.GetPartitionsWithPendingEvents())
+                    foreach (var partitionKey in await this.queue.GetPartitionsWithPendingEvents())
                     {
                         if (cancellationToken.IsCancellationRequested)
                             return;
@@ -116,12 +117,12 @@ namespace Infrastructure.Azure.EventSourcing
             this.dynamicThrottling.Start(cancellationToken);
         }
 
-        public void SendAsync(string partitionKey, int eventCount)
+        public async Task SendAsync(string partitionKey, int eventCount)
         {
             if (string.IsNullOrEmpty(partitionKey))
                 throw new ArgumentNullException(partitionKey);
 
-            EnqueueIfNotExists(partitionKey);
+            this.EnqueueIfNotExists(partitionKey);
 
             this.instrumentation.EventsPublishingRequested(eventCount);
         }
@@ -151,7 +152,7 @@ namespace Infrastructure.Azure.EventSourcing
             }
         }
 
-        private void ProcessPartition(string key)
+        private void ProcessPartition(string key, TableContinuationToken continuationToken = null)
         {
             this.instrumentation.EventPublisherStarted();
 
@@ -169,10 +170,10 @@ namespace Infrastructure.Azure.EventSourcing
                             {
                                 this.EnqueueIfNotExists(key);
                             }
-                            else if (hasMoreResults)
+                            else if (hasMoreResults != null)
                             {
                                 // if there are more events in this partition, then continue processing and do not mark work as completed.
-                                ProcessPartition(key);
+                                ProcessPartition(key, continuationToken);
                                 return;
                             }
 

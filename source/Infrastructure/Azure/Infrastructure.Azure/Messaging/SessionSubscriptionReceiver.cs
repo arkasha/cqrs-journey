@@ -17,12 +17,12 @@ namespace Infrastructure.Azure.Messaging
 {
     using System;
     using System.Diagnostics;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using Infrastructure.Azure.Instrumentation;
     using Infrastructure.Azure.Utils;
-    using Microsoft.Practices.EnterpriseLibrary.WindowsAzure.TransientFaultHandling.ServiceBus;
-    using Microsoft.Practices.TransientFaultHandling;
+    using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
     using Microsoft.ServiceBus;
     using Microsoft.ServiceBus.Messaging;
 
@@ -33,12 +33,12 @@ namespace Infrastructure.Azure.Messaging
     /// <remarks>
     /// <para>
     /// In V3 we made a lot of changes to optimize the performance and scalability of the receiver.
-    /// See <see cref="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see> for more information on the optimizations and migration to V3.
+    /// See <see href="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see> for more information on the optimizations and migration to V3.
     /// </para>
     /// <para>
     /// The current implementation uses async calls to communicate with the service bus, although the message processing is done with a blocking synchronous call.
     /// We could still make several performance improvements. For example, we could take advantage of sessions and batch multiple messages to avoid accessing the
-    /// repositories multiple times where appropriate. See <see cref="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see> for more potential 
+    /// repositories multiple times where appropriate. See <see href="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see> for more potential 
     /// performance and scalability optimizations.
     /// </para>
     /// </remarks>
@@ -53,7 +53,7 @@ namespace Infrastructure.Azure.Messaging
         private readonly string subscription;
         private readonly bool requiresSequentialProcessing;
         private readonly object lockObject = new object();
-        private readonly RetryPolicy receiveRetryPolicy;
+        private readonly Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling.RetryPolicy receiveRetryPolicy;
         private readonly ISessionSubscriptionReceiverInstrumentation instrumentation;
         private readonly DynamicThrottling dynamicThrottling;
         private CancellationTokenSource cancellationSource;
@@ -223,38 +223,32 @@ namespace Infrastructure.Azure.Messaging
                         TaskEx.Delay(10000).ContinueWith(t => AcceptSession(cancellationToken));
                     }
                 };
-
-                this.receiveRetryPolicy.ExecuteAction(
-                    cb => this.client.BeginAcceptMessageSession(AcceptSessionLongPollingTimeout, cb, null),
-                    ar =>
-                    {
-                        // Complete the asynchronous operation. This may throw an exception that will be handled internally by retry policy.
-                        try
+                this.receiveRetryPolicy.ExecuteAsync(
+                    () => this.client.AcceptMessageSessionAsync(AcceptSessionLongPollingTimeout), cancellationToken).ContinueWith(
+                        task =>
                         {
-                            return this.client.EndAcceptMessageSession(ar);
-                        }
-                        catch (TimeoutException)
-                        {
-                            // TimeoutException is not just transient but completely expected in this case, so not relying on Topaz to retry
-                            return null;
-                        }
-                    },
-                    session =>
-                    {
-                        if (session != null)
-                        {
-                            this.instrumentation.SessionStarted();
-                            this.dynamicThrottling.NotifyWorkStarted();
-                            // starts a new task to process new sessions in parallel when enough threads are available
-                            Task.Factory.StartNew(() => this.AcceptSession(cancellationToken), cancellationToken);
-                            this.ReceiveMessagesAndCloseSession(session, cancellationToken);
-                        }
-                        else
-                        {
-                            this.AcceptSession(cancellationToken);
-                        }
-                    },
-                    recoverAcceptSession);
+                            if (task.IsFaulted)
+                            {
+                                recoverAcceptSession(task.Exception.InnerException);
+                            }
+                            else
+                            {
+                                var session = task.Result;
+                                if (session != null)
+                                {
+                                    this.instrumentation.SessionStarted();
+                                    this.dynamicThrottling.NotifyWorkStarted();
+                                    // starts a new task to process new sessions in parallel when enough threads are available
+                                    Task.Factory.StartNew(() => this.AcceptSession(cancellationToken), cancellationToken);
+                                    this.ReceiveMessagesAndCloseSession(session, cancellationToken);
+                                }
+                                else
+                                {
+                                    this.AcceptSession(cancellationToken);
+                                }
+                            }
+                            
+                        }, cancellationToken);
             }
         }
 
@@ -284,11 +278,17 @@ namespace Infrastructure.Azure.Messaging
                         {
                             unreleasedMessages.Dispose();
                         }
-
-                        this.receiveRetryPolicy.ExecuteAction(
-                            cb => session.BeginClose(cb, null),
-                            session.EndClose,
-                            () =>
+                        this.receiveRetryPolicy.ExecuteAsync(session.CloseAsync, cancellationToken).ContinueWith(t =>
+                        {
+                            if (t.IsFaulted)
+                            {
+                                this.instrumentation.SessionEnded();
+                                Trace.TraceError(
+                                    "An unrecoverable error occurred while trying to close a session in subscription {1}:\r\n{0}",
+                                    t.Exception.InnerException, this.subscription);
+                                this.dynamicThrottling.NotifyWorkCompletedWithError();
+                            }
+                            else
                             {
                                 this.instrumentation.SessionEnded();
                                 if (success)
@@ -299,13 +299,8 @@ namespace Infrastructure.Azure.Messaging
                                 {
                                     this.dynamicThrottling.NotifyWorkCompletedWithError();
                                 }
-                            },
-                            ex =>
-                            {
-                                this.instrumentation.SessionEnded();
-                                Trace.TraceError("An unrecoverable error occurred while trying to close a session in subscription {1}:\r\n{0}", ex, this.subscription);
-                                this.dynamicThrottling.NotifyWorkCompletedWithError();
-                            });
+                            }
+                        });
                     };
 
                 if (this.requiresSequentialProcessing)
@@ -329,18 +324,12 @@ namespace Infrastructure.Azure.Messaging
             Action receiveMessage = (() =>
             {
                 // Use a retry policy to execute the Receive action in an asynchronous and reliable fashion.
-                this.receiveRetryPolicy.ExecuteAction
-                (
-                    cb =>
+                this.receiveRetryPolicy.ExecuteAsync(() => session.ReceiveAsync(TimeSpan.Zero), cancellationToken).ContinueWith(t =>
+                {
+                    if (!t.IsFaulted && !t.IsCanceled)
                     {
-                        // Start receiving a new message asynchronously.
-                        // Does not wait for new messages to arrive in a session. If no further messages we will just close the session.
-                        session.BeginReceive(TimeSpan.Zero, cb, null);
-                    },
-                    // Complete the asynchronous operation. This may throw an exception that will be handled internally by retry policy.
-                    session.EndReceive,
-                    msg =>
-                    {
+                        var msg = t.Result;
+
                         // Process the message once it was successfully received
                         // Check if we actually received any messages.
                         if (msg != null)
@@ -352,73 +341,74 @@ namespace Infrastructure.Azure.Messaging
                             unreleasedMessages.AddCount();
 
                             Task.Factory.StartNew(() =>
+                            {
+                                var releaseAction = MessageReleaseAction.AbandonMessage;
+
+                                try
                                 {
-                                    var releaseAction = MessageReleaseAction.AbandonMessage;
+                                    this.instrumentation.MessageReceived();
 
-                                    try
+                                    schedulingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds;
+
+                                    // Make sure the process was told to stop receiving while it was waiting for a new message.
+                                    if (!cancellationToken.IsCancellationRequested)
                                     {
-                                        this.instrumentation.MessageReceived();
-
-                                        schedulingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds;
-
-                                        // Make sure the process was told to stop receiving while it was waiting for a new message.
-                                        if (!cancellationToken.IsCancellationRequested)
+                                        try
                                         {
                                             try
                                             {
-                                                try
-                                                {
-                                                    // Process the received message.
-                                                    releaseAction = this.InvokeMessageHandler(msg);
+                                                // Process the received message.
+                                                releaseAction = this.InvokeMessageHandler(msg);
 
-                                                    processingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds - schedulingElapsedMilliseconds;
-                                                    this.instrumentation.MessageProcessed(releaseAction.Kind == MessageReleaseActionKind.Complete, processingElapsedMilliseconds);
-                                                }
-                                                catch
-                                                {
-                                                    processingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds - schedulingElapsedMilliseconds;
-                                                    this.instrumentation.MessageProcessed(false, processingElapsedMilliseconds);
-
-                                                    throw;
-                                                }
+                                                processingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds - schedulingElapsedMilliseconds;
+                                                this.instrumentation.MessageProcessed(releaseAction.Kind == MessageReleaseActionKind.Complete, processingElapsedMilliseconds);
                                             }
-                                            finally
+                                            catch
                                             {
-                                                if (roundtripStopwatch.Elapsed > TimeSpan.FromSeconds(45))
-                                                {
-                                                    this.dynamicThrottling.Penalize();
-                                                }
+                                                processingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds - schedulingElapsedMilliseconds;
+                                                this.instrumentation.MessageProcessed(false, processingElapsedMilliseconds);
+
+                                                throw;
+                                            }
+                                        }
+                                        finally
+                                        {
+                                            if (roundtripStopwatch.Elapsed > TimeSpan.FromSeconds(45))
+                                            {
+                                                this.dynamicThrottling.Penalize();
                                             }
                                         }
                                     }
-                                    finally
+                                }
+                                finally
+                                {
+                                    // Ensure that any resources allocated by a BrokeredMessage instance are released.
+                                    if (this.requiresSequentialProcessing)
                                     {
-                                        // Ensure that any resources allocated by a BrokeredMessage instance are released.
-                                        if (this.requiresSequentialProcessing)
-                                        {
-                                            this.ReleaseMessage(msg, releaseAction, () => { receiveNext(); }, () => { closeSession(false); }, unreleasedMessages, processingElapsedMilliseconds, schedulingElapsedMilliseconds, roundtripStopwatch);
-                                        }
-                                        else
-                                        {
-                                            // Receives next without waiting for the message to be released.
-                                            this.ReleaseMessage(msg, releaseAction, () => { }, () => { this.dynamicThrottling.Penalize(); }, unreleasedMessages, processingElapsedMilliseconds, schedulingElapsedMilliseconds, roundtripStopwatch);
-                                            receiveNext.Invoke();
-                                        }
+                                        this.ReleaseMessage(msg, releaseAction, () => { receiveNext(); }, () => { closeSession(false); }, unreleasedMessages, processingElapsedMilliseconds, schedulingElapsedMilliseconds, roundtripStopwatch);
                                     }
-                                });
+                                    else
+                                    {
+                                        // Receives next without waiting for the message to be released.
+                                        this.ReleaseMessage(msg, releaseAction, () => { }, () => { this.dynamicThrottling.Penalize(); }, unreleasedMessages, processingElapsedMilliseconds, schedulingElapsedMilliseconds, roundtripStopwatch);
+                                        receiveNext.Invoke();
+                                    }
+                                }
+                            });
                         }
                         else
                         {
                             // no more messages in the session, close it and do not continue receiving
                             closeSession(true);
                         }
-                    },
-                    ex =>
+                    }
+                    else if (t.IsFaulted)
                     {
                         // Invoke a custom action to indicate that we have encountered an exception and
                         // need further decision as to whether to continue receiving messages.
-                        recoverReceive.Invoke(ex);
-                    });
+                        recoverReceive.Invoke(t.Exception);
+                    }
+                });
             });
 
             // Initialize an action to receive the next message in the queue or closes the session if cancelled.
@@ -439,7 +429,16 @@ namespace Infrastructure.Azure.Messaging
             recoverReceive = ex =>
             {
                 // Just log an exception. Do not allow an unhandled exception to terminate the message receive loop abnormally.
-                Trace.TraceError("An unrecoverable error occurred while trying to receive a new message from subscription {1}:\r\n{0}", ex, this.subscription);
+                if (ex is AggregateException)
+                {
+                    var innerExceptions = string.Join("\r\n", ((AggregateException)ex).Flatten().InnerExceptions.Select(e => e.ToString()));
+                    
+                    Trace.TraceError("Unrecoverable errors occurred while trying to receive a new message from subscription {1}:\r\n{0}", innerExceptions, this.subscription);
+                }
+                else
+                {
+                    Trace.TraceError("An unrecoverable error occurred while trying to receive a new message from subscription {1}:\r\n{0}", ex, this.subscription);
+                }
 
                 // Cannot continue to receive messages from this session.
                 closeSession(false);

@@ -18,6 +18,7 @@ namespace Infrastructure.Azure.EventSourcing
     using System.IO;
     using System.Linq;
     using System.Runtime.Caching;
+    using System.Threading.Tasks;
     using Infrastructure.EventSourcing;
     using Infrastructure.Serialization;
     using Infrastructure.Util;
@@ -32,7 +33,7 @@ namespace Infrastructure.Azure.EventSourcing
     /// integrate better with sessionful message processors, so that the when the process is guaranteed to be the single temporary writer of a certain entity 
     /// instance, then there is no need to check for updates in the the <see cref="IEventStore"/> since the last  cached snapshot (<see cref="IMemento"/>).</para>
     /// <para>Also, it would be very valuable to provide asynchronous APIs to avoid blocking I/O calls.</para>
-    /// <para>See <see cref="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see> for more potential performance and scalability optimizations.</para>
+    /// <para>See <see href="http://go.microsoft.com/fwlink/p/?LinkID=258557"> Journey chapter 7</see> for more potential performance and scalability optimizations.</para>
     /// </remarks>
     public class AzureEventSourcedRepository<T> : IEventSourcedRepository<T> where T : class, IEventSourced
     {
@@ -110,7 +111,7 @@ namespace Infrastructure.Azure.EventSourcing
             }
         }
 
-        public T Find(Guid id)
+        public async Task<T> Find(Guid id)
         {
             var cachedMemento = this.getMementoFromCache(id);
             if (cachedMemento != null && cachedMemento.Item1 != null)
@@ -120,7 +121,7 @@ namespace Infrastructure.Azure.EventSourcing
                 IEnumerable<IVersionedEvent> deserialized;
                 if (!cachedMemento.Item2.HasValue || cachedMemento.Item2.Value < DateTime.UtcNow.AddSeconds(-1))
                 {
-                    deserialized = this.eventStore.Load(GetPartitionKey(id), cachedMemento.Item1.Version + 1).Select(this.Deserialize);
+                    deserialized = (await this.eventStore.Load(GetPartitionKey(id), cachedMemento.Item1.Version + 1)).Select(this.Deserialize);
                 }
                 else
                 {
@@ -136,7 +137,7 @@ namespace Infrastructure.Azure.EventSourcing
             }
             else
             {
-                var deserialized = this.eventStore.Load(GetPartitionKey(id), 0)
+                var deserialized = (await this.eventStore.Load(GetPartitionKey(id), 0))
                     .Select(this.Deserialize)
                     .AsCachedAnyEnumerable();
 
@@ -150,18 +151,18 @@ namespace Infrastructure.Azure.EventSourcing
         }
 
 
-        public T Get(Guid id)
+        public async Task<T> Get(Guid id)
         {
-            var entity = this.Find(id);
+            var entity = await this.Find(id);
             if (entity == null)
             {
                 throw new EntityNotFoundException(id, sourceType);
             }
 
-            return entity;
+            return (T)entity;
         }
 
-        public void Save(T eventSourced, string correlationId)
+        public async Task Save(T eventSourced, string correlationId)
         {
             // TODO: guarantee that only incremental versions of the event are stored
             var events = eventSourced.Events.ToArray();
@@ -170,7 +171,7 @@ namespace Infrastructure.Azure.EventSourcing
             var partitionKey = this.GetPartitionKey(eventSourced.Id);
             try
             {
-                this.eventStore.Save(partitionKey, serialized);
+                await this.eventStore.Save(partitionKey, serialized);
             }
             catch
             {
@@ -178,7 +179,7 @@ namespace Infrastructure.Azure.EventSourcing
                 throw;
             }
 
-            this.publisher.SendAsync(partitionKey, events.Length);
+            await this.publisher.SendAsync(partitionKey, events.Length);
 
             this.cacheMementoIfApplicable.Invoke(eventSourced);
         }

@@ -13,6 +13,7 @@
 
 namespace Infrastructure.Azure.EventSourcing
 {
+    using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.StorageClient;
 
     public interface IEventRecord
@@ -32,7 +33,7 @@ namespace Infrastructure.Azure.EventSourcing
         string TypeName { get; }
     }
 
-    public class EventTableServiceEntity : TableServiceEntity, IEventRecord
+    public class EventTableEntity : TableEntity, IEventRecord
     {
         public string SourceId { get; set; }
         public string SourceType { get; set; }

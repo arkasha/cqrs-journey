@@ -16,8 +16,9 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
     using System;
     using System.Collections.Generic;
     using System.Threading;
+    using System.Threading.Tasks;
     using Infrastructure.Azure.Messaging;
-    using Microsoft.Practices.TransientFaultHandling;
+    using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
     using Microsoft.ServiceBus;
     using Microsoft.ServiceBus.Messaging;
     using Xunit;
@@ -88,12 +89,13 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
             var attempt = 0;
             var signal = new AutoResetEvent(false);
             var currentDelegate = sut.DoBeginSendMessageDelegate;
+            this.sut.DoBeginSendMessageDelegate = 
             sut.DoBeginSendMessageDelegate =
-                (mf, ac) =>
+                (mf) =>
                 {
                     if (attempt++ == 0) throw new TimeoutException();
-                    currentDelegate(mf, ac);
                     signal.Set();
+                    return currentDelegate(mf);
                 };
 
             sut.SendAsync(() => new BrokeredMessage(payload));
@@ -110,11 +112,10 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
             var payload = Guid.NewGuid().ToString();
 
             var currentDelegate = sut.DoBeginSendMessageDelegate;
-            sut.DoBeginSendMessageDelegate =
-                (mf, ac) =>
-                {
-                    throw new TimeoutException();
-                };
+            this.sut.DoBeginSendMessageDelegate = brokeredMessage =>
+            {
+                throw new TimeoutException();
+            };
 
             sut.SendAsync(() => new BrokeredMessage(payload));
 
@@ -128,21 +129,14 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
         public TestableTopicSender(ServiceBusSettings settings, string topic, RetryStrategy retryStrategy)
             : base(settings, topic, retryStrategy)
         {
-            this.DoBeginSendMessageDelegate = base.DoBeginSendMessage;
-            this.DoEndSendMessageDelegate = base.DoEndSendMessage;
+            this.DoBeginSendMessageDelegate = base.DoSendMessageAsync;
         }
 
-        public Action<BrokeredMessage, AsyncCallback> DoBeginSendMessageDelegate;
-        public Action<IAsyncResult> DoEndSendMessageDelegate;
+        public Func<BrokeredMessage, Task> DoBeginSendMessageDelegate;
 
-        protected override void DoBeginSendMessage(BrokeredMessage messageFactory, AsyncCallback ac)
+        protected override async Task DoSendMessageAsync(BrokeredMessage message)
         {
-            this.DoBeginSendMessageDelegate(messageFactory, ac);
-        }
-
-        protected override void DoEndSendMessage(IAsyncResult ar)
-        {
-            this.DoEndSendMessageDelegate(ar);
+            await this.DoBeginSendMessageDelegate(message);
         }
     }
 }

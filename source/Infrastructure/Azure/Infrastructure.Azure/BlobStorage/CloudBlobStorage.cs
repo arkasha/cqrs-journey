@@ -16,8 +16,7 @@ namespace Infrastructure.Azure.BlobStorage
     using System;
     using System.Diagnostics;
     using Infrastructure.BlobStorage;
-    using Microsoft.Practices.EnterpriseLibrary.WindowsAzure.TransientFaultHandling.AzureStorage;
-    using Microsoft.Practices.TransientFaultHandling;
+    using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
     using Microsoft.WindowsAzure;
     using Microsoft.WindowsAzure.StorageClient;
 

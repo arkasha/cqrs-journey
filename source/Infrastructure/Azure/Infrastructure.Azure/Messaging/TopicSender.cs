@@ -17,8 +17,8 @@ namespace Infrastructure.Azure.Messaging
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Threading;
-    using Microsoft.Practices.EnterpriseLibrary.WindowsAzure.TransientFaultHandling.ServiceBus;
-    using Microsoft.Practices.TransientFaultHandling;
+    using System.Threading.Tasks;
+    using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
     using Microsoft.ServiceBus;
     using Microsoft.ServiceBus.Messaging;
 
@@ -31,7 +31,7 @@ namespace Infrastructure.Azure.Messaging
         private readonly Uri serviceUri;
         private readonly ServiceBusSettings settings;
         private readonly string topic;
-        private readonly RetryPolicy retryPolicy;
+        private readonly Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling.RetryPolicy retryPolicy;
         private readonly TopicClient topicClient;
 
         /// <summary>
@@ -100,15 +100,19 @@ namespace Infrastructure.Azure.Messaging
 
         public void SendAsync(Func<BrokeredMessage> messageFactory, Action successCallback, Action<Exception> exceptionCallback)
         {
-            this.retryPolicy.ExecuteAction(
-                ac => this.DoBeginSendMessage(messageFactory(), ac),
-                this.DoEndSendMessage,
-                successCallback,
-                ex =>
+            this.retryPolicy.ExecuteAsync(() => DoSendMessageAsync(messageFactory())).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
                 {
+                    var ex = t.Exception.InnerException;
                     Trace.TraceError("An unrecoverable error occurred while trying to send a message:\r\n{0}", ex);
                     exceptionCallback(ex);
-                });
+                }
+                else if (!t.IsCanceled)
+                {
+                    successCallback();
+                }
+            });
         }
 
         public void Send(Func<BrokeredMessage> messageFactory)
@@ -132,28 +136,16 @@ namespace Infrastructure.Azure.Messaging
             }
         }
 
-        protected virtual void DoBeginSendMessage(BrokeredMessage message, AsyncCallback ac)
+        protected virtual async Task DoSendMessageAsync(BrokeredMessage message)
         {
             try
             {
-                this.topicClient.BeginSend(message, ac, message);
+                await this.topicClient.SendAsync(message);
             }
             catch
             {
                 message.Dispose();
                 throw;
-            }
-        }
-
-        protected virtual void DoEndSendMessage(IAsyncResult ar)
-        {
-            try
-            {
-                this.topicClient.EndSend(ar);
-            }
-            finally
-            {
-                using (ar.AsyncState as IDisposable) { }
             }
         }
     }

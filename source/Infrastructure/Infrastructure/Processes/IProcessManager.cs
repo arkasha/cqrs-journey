@@ -22,9 +22,9 @@ namespace Infrastructure.Processes
     /// publish commands to the command bus.
     /// </summary>
     /// <remarks>
-    /// <para>See <see cref="http://go.microsoft.com/fwlink/p/?LinkID=258564">Reference 6</see> for a description of what is a Process Manager.</para>
+    /// <para>See <see href="http://go.microsoft.com/fwlink/p/?LinkID=258564">Reference 6</see> for a description of what is a Process Manager.</para>
     /// <para>There are a few things that we learnt along the way regarding Process Managers, which we might do differently with the new insights that we
-    /// now have. See <see cref="http://go.microsoft.com/fwlink/p/?LinkID=258558"> Journey lessons learnt</see> for more information.</para>
+    /// now have. See <see href="http://go.microsoft.com/fwlink/p/?LinkID=258558"> Journey lessons learnt</see> for more information.</para>
     /// </remarks>
     public interface IProcessManager
     {

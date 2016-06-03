@@ -16,17 +16,18 @@ namespace Infrastructure.Azure.MessageLog
     using System;
     using System.Data.Services.Client;
     using System.Net;
-    using Microsoft.Practices.EnterpriseLibrary.WindowsAzure.TransientFaultHandling.AzureStorage;
-    using Microsoft.Practices.TransientFaultHandling;
-    using Microsoft.WindowsAzure;
-    using Microsoft.WindowsAzure.StorageClient;
+    using System.Threading.Tasks;
+    using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
+    using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.RetryPolicies;
+    using Microsoft.WindowsAzure.Storage.Table;
 
     public class AzureMessageLogWriter : IAzureMessageLogWriter
     {
         private readonly CloudStorageAccount account;
         private readonly string tableName;
         private readonly CloudTableClient tableClient;
-        private Microsoft.Practices.TransientFaultHandling.RetryPolicy retryPolicy;
+        private Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling.RetryPolicy retryPolicy;
 
         public AzureMessageLogWriter(CloudStorageAccount account, string tableName)
         {
@@ -37,35 +38,19 @@ namespace Infrastructure.Azure.MessageLog
             this.account = account;
             this.tableName = tableName;
             this.tableClient = account.CreateCloudTableClient();
-            this.tableClient.RetryPolicy = RetryPolicies.NoRetry();
+            this.tableClient.DefaultRequestOptions.RetryPolicy = new NoRetry();
 
             var retryStrategy = new ExponentialBackoff(10, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(1));
             this.retryPolicy = new RetryPolicy<StorageTransientErrorDetectionStrategy>(retryStrategy);
 
-            this.retryPolicy.ExecuteAction(() => tableClient.CreateTableIfNotExist(tableName));
+            this.retryPolicy.ExecuteAction(() => this.tableClient.GetTableReference(this.tableName).CreateIfNotExists());
         }
 
-        public void Save(MessageLogEntity entity)
+        public async Task Save(MessageLogEntity entity)
         {
-            this.retryPolicy.ExecuteAction(() =>
-            {
-                var context = this.tableClient.GetDataServiceContext();
+            var table = this.tableClient.GetTableReference(this.tableName);
 
-                context.AddObject(this.tableName, entity);
-
-                try
-                {
-                    context.SaveChanges();
-                }
-                catch (DataServiceRequestException dsre)
-                {
-                    var clientException = dsre.InnerException as DataServiceClientException;
-                    // If we get a conflict, we ignore it as we've already saved the message, 
-                    // making this log idempotent.
-                    if (clientException == null || clientException.StatusCode != (int)HttpStatusCode.Conflict)
-                        throw;
-                }
-            });
+            await this.retryPolicy.ExecuteAction(() => table.ExecuteAsync(TableOperation.InsertOrReplace(entity)));
         }
     }
 }

@@ -15,8 +15,7 @@ namespace Infrastructure.Azure.IntegrationTests
 {
     using System;
     using Infrastructure.Azure.Messaging;
-    using Microsoft.Practices.EnterpriseLibrary.WindowsAzure.TransientFaultHandling.ServiceBus;
-    using Microsoft.Practices.TransientFaultHandling;
+    using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
 
     /// <summary>
     /// Base class for messaging integration tests.

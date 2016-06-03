@@ -13,9 +13,10 @@
 
 namespace Infrastructure.Azure.MessageLog
 {
+    using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.StorageClient;
 
-    public class MessageLogEntity : TableServiceEntity
+    public class MessageLogEntity : TableEntity
     {
         /// <summary>
         /// Gets or sets the kind of entry, Command or Event.
