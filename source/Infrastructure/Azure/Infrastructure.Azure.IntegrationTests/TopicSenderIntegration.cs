@@ -32,13 +32,10 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
         {
             this.sut = new TestableTopicSender(this.Settings, this.Topic, new Incremental(1, TimeSpan.Zero, TimeSpan.Zero));
 
-            var tokenProvider = TokenProvider.CreateSharedSecretTokenProvider(this.Settings.TokenIssuer, this.Settings.TokenAccessKey);
-            var serviceUri = ServiceBusEnvironment.CreateServiceUri(this.Settings.ServiceUriScheme, this.Settings.ServiceNamespace, this.Settings.ServicePath);
-
-            var manager = new NamespaceManager(serviceUri, tokenProvider);
+            var manager = NamespaceManager.CreateFromConnectionString(this.Settings.ConnectionString);
             manager.CreateSubscription(this.Topic, "Test");
 
-            var messagingFactory = MessagingFactory.Create(serviceUri, tokenProvider);
+            var messagingFactory = MessagingFactory.CreateFromConnectionString(this.Settings.ConnectionString);
             this.subscriptionClient = messagingFactory.CreateSubscriptionClient(this.Topic, "Test");
 
         }
@@ -48,9 +45,9 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
         {
             var payload = Guid.NewGuid().ToString();
 
-            sut.SendAsync(() => new BrokeredMessage(payload));
+            this.sut.SendAsync(() => new BrokeredMessage(payload));
 
-            var message = subscriptionClient.Receive(TimeSpan.FromSeconds(5));
+            var message = this.subscriptionClient.Receive(TimeSpan.FromSeconds(5));
             Assert.Equal(payload, message.GetBody<string>());
         }
 
@@ -60,7 +57,7 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
             var payload1 = Guid.NewGuid().ToString();
             var payload2 = Guid.NewGuid().ToString();
 
-            sut.SendAsync(new Func<BrokeredMessage>[] { () => new BrokeredMessage(payload1), () => new BrokeredMessage(payload2) });
+            this.sut.SendAsync(new Func<BrokeredMessage>[] { () => new BrokeredMessage(payload1), () => new BrokeredMessage(payload2) });
 
             var messages = new List<string>
                                {
@@ -75,9 +72,9 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
         public void when_sending_message_then_succeeds()
         {
             var payload = Guid.NewGuid().ToString();
-            sut.Send(() => new BrokeredMessage(payload));
+            this.sut.Send(() => new BrokeredMessage(payload));
 
-            var message = subscriptionClient.Receive();
+            var message = this.subscriptionClient.Receive();
             Assert.Equal(payload, message.GetBody<string>());
         }
 
@@ -88,9 +85,8 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
 
             var attempt = 0;
             var signal = new AutoResetEvent(false);
-            var currentDelegate = sut.DoBeginSendMessageDelegate;
-            this.sut.DoBeginSendMessageDelegate = 
-            sut.DoBeginSendMessageDelegate =
+            var currentDelegate = this.sut.DoBeginSendMessageDelegate;
+            this.sut.DoBeginSendMessageDelegate = this.sut.DoBeginSendMessageDelegate =
                 (mf) =>
                 {
                     if (attempt++ == 0) throw new TimeoutException();
@@ -98,9 +94,9 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
                     return currentDelegate(mf);
                 };
 
-            sut.SendAsync(() => new BrokeredMessage(payload));
+            this.sut.SendAsync(() => new BrokeredMessage(payload));
 
-            var message = subscriptionClient.Receive(TimeSpan.FromSeconds(5));
+            var message = this.subscriptionClient.Receive(TimeSpan.FromSeconds(5));
             Assert.True(signal.WaitOne(TimeSpan.FromSeconds(5)), "Test timed out");
             Assert.Equal(payload, message.GetBody<string>());
             Assert.Equal(2, attempt);
@@ -111,15 +107,15 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
         {
             var payload = Guid.NewGuid().ToString();
 
-            var currentDelegate = sut.DoBeginSendMessageDelegate;
+            var currentDelegate = this.sut.DoBeginSendMessageDelegate;
             this.sut.DoBeginSendMessageDelegate = brokeredMessage =>
             {
                 throw new TimeoutException();
             };
 
-            sut.SendAsync(() => new BrokeredMessage(payload));
+            this.sut.SendAsync(() => new BrokeredMessage(payload));
 
-            var message = subscriptionClient.Receive(TimeSpan.FromSeconds(5));
+            var message = this.subscriptionClient.Receive(TimeSpan.FromSeconds(5));
             Assert.Null(message);
         }
     }

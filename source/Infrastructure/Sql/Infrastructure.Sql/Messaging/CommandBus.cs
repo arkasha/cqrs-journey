@@ -45,14 +45,14 @@ namespace Infrastructure.Sql.Messaging
         /// </summary>
         public void Send(Envelope<ICommand> command)
         {
-            var message = BuildMessage(command);
+            var message = this.BuildMessage(command);
 
             this.sender.Send(message);
         }
 
         public void Send(IEnumerable<Envelope<ICommand>> commands)
         {
-            var messages = commands.Select(command => BuildMessage(command));
+            var messages = commands.Select(command => this.BuildMessage(command));
 
             this.sender.Send(messages);
         }

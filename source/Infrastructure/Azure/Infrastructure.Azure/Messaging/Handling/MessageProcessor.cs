@@ -51,7 +51,7 @@ namespace Infrastructure.Azure.Messaging.Handling
         /// </summary>
         public virtual void Start()
         {
-            ThrowIfDisposed();
+            this.ThrowIfDisposed();
             lock (this.lockObject)
             {
                 if (!this.started)
@@ -82,7 +82,7 @@ namespace Infrastructure.Azure.Messaging.Handling
         /// </summary>
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 
@@ -117,7 +117,7 @@ namespace Infrastructure.Azure.Messaging.Handling
 
         ~MessageProcessor()
         {
-            Dispose(false);
+            this.Dispose(false);
         }
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2202:Do not dispose objects multiple times", Justification = "By design.")]
@@ -146,14 +146,14 @@ namespace Infrastructure.Azure.Messaging.Handling
 
             try
             {
-                ProcessMessage(traceIdentifier, payload, message.MessageId, message.CorrelationId);
+                this.ProcessMessage(traceIdentifier, payload, message.MessageId, message.CorrelationId);
             }
             catch (Exception e)
             {
-                return HandleProcessingException(message, traceIdentifier, e);
+                return this.HandleProcessingException(message, traceIdentifier, e);
             }
 
-            return CompleteMessage(message, traceIdentifier);
+            return this.CompleteMessage(message, traceIdentifier);
         }
 
         private MessageReleaseAction CompleteMessage(BrokeredMessage message, string traceIdentifier)

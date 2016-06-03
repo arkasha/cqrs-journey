@@ -79,11 +79,11 @@ namespace Infrastructure.Azure.EventSourcing
                 {
                     try
                     {
-                        foreach (var key in GetThrottlingEnumerable(this.enqueuedKeys.GetConsumingEnumerable(cancellationToken), cancellationToken))
+                        foreach (var key in this.GetThrottlingEnumerable(this.enqueuedKeys.GetConsumingEnumerable(cancellationToken), cancellationToken))
                         {
                             if (!cancellationToken.IsCancellationRequested)
                             {
-                                ProcessPartition(key);
+                                this.ProcessPartition(key);
                             }
                             else
                             {
@@ -129,7 +129,7 @@ namespace Infrastructure.Azure.EventSourcing
 
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 
@@ -173,7 +173,7 @@ namespace Infrastructure.Azure.EventSourcing
                             else if (hasMoreResults != null)
                             {
                                 // if there are more events in this partition, then continue processing and do not mark work as completed.
-                                ProcessPartition(key, continuationToken);
+                                this.ProcessPartition(key, continuationToken);
                                 return;
                             }
 

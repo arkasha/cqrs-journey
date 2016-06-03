@@ -52,9 +52,6 @@ namespace Infrastructure.Azure.Messaging
             this.settings = settings;
             this.topic = topic;
 
-            this.tokenProvider = TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey);
-            this.serviceUri = ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath);
-
             // TODO: This could be injected.
             this.retryPolicy = new RetryPolicy<ServiceBusTransientErrorDetectionStrategy>(retryStrategy);
             this.retryPolicy.Retrying +=
@@ -69,7 +66,7 @@ namespace Infrastructure.Azure.Messaging
                     Trace.TraceWarning("An error occurred in attempt number {1} to send a message: {0}", e.LastException.Message, e.CurrentRetryCount);
                 };
 
-            var factory = MessagingFactory.Create(this.serviceUri, this.tokenProvider);
+            var factory = MessagingFactory.CreateFromConnectionString(settings.ConnectionString);
             this.topicClient = factory.CreateTopicClient(this.topic);
         }
 
@@ -100,7 +97,7 @@ namespace Infrastructure.Azure.Messaging
 
         public void SendAsync(Func<BrokeredMessage> messageFactory, Action successCallback, Action<Exception> exceptionCallback)
         {
-            this.retryPolicy.ExecuteAsync(() => DoSendMessageAsync(messageFactory())).ContinueWith(t =>
+            this.retryPolicy.ExecuteAsync(() => this.DoSendMessageAsync(messageFactory())).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {

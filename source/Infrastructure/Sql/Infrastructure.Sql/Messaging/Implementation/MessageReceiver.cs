@@ -96,7 +96,7 @@ namespace Infrastructure.Sql.Messaging.Implementation
 
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 
@@ -107,7 +107,7 @@ namespace Infrastructure.Sql.Messaging.Implementation
 
         ~MessageReceiver()
         {
-            Dispose(false);
+            this.Dispose(false);
         }
 
         /// <summary>
@@ -129,7 +129,7 @@ namespace Infrastructure.Sql.Messaging.Implementation
         {
             using (var connection = this.connectionFactory.CreateConnection(this.name))
             {
-                var currentDate = GetCurrentDate();
+                var currentDate = this.GetCurrentDate();
 
                 connection.Open();
                 using (var transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))

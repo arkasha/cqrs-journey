@@ -31,7 +31,7 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
             var settings = InfrastructureSettings.Read("Settings.xml").BlobStorage;
             this.account = CloudStorageAccount.Parse(settings.ConnectionString);
             this.rootContainerName = Guid.NewGuid().ToString();
-            this.sut = new CloudBlobStorage(account, this.rootContainerName);
+            this.sut = new CloudBlobStorage(this.account, this.rootContainerName);
         }
 
         public void Dispose()
@@ -82,7 +82,7 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
 
             containerReference.Create();
 
-            this.sut = new CloudBlobStorage(account, this.rootContainerName);
+            this.sut = new CloudBlobStorage(this.account, this.rootContainerName);
         }
 
         public void Dispose()

@@ -8,11 +8,7 @@
                 <xs:element name="ServiceBus" minOccurs="1" maxOccurs="1">
                     <xs:complexType>
                         <xs:sequence>
-                            <xs:element name="ServiceUriScheme" type="xs:string" minOccurs="1" maxOccurs="1" />
-                            <xs:element name="ServiceNamespace" type="xs:string" minOccurs="1" maxOccurs="1" />
-                            <xs:element name="ServicePath" minOccurs="1" maxOccurs="1" />
-                            <xs:element name="TokenIssuer" type="xs:string" minOccurs="1" maxOccurs="1" />
-                            <xs:element name="TokenAccessKey" type="xs:string" minOccurs="1" maxOccurs="1" />
+                            <xs:element name="ConnectionString" type="xs:string" minOccurs="1" maxOccurs="1" />
                             <xs:element name="Topics" minOccurs="0" maxOccurs="1">
                                 <xs:complexType>
                                     <xs:sequence>

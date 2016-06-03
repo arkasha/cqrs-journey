@@ -59,7 +59,7 @@ namespace Infrastructure.Sql.Processes
 
         public T Find(Guid id)
         {
-            return Find(pm => pm.Id == id, true);
+            return this.Find(pm => pm.Id == id, true);
         }
 
         public T Find(Expression<Func<T, bool>> predicate, bool includeCompleted = false)

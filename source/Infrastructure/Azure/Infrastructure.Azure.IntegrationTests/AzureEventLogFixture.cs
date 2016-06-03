@@ -51,9 +51,9 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             this.eventC = new EventC();
 
             this.metadata = Mock.Of<IMetadataProvider>(x =>
-                x.GetMetadata(eventA) == new Dictionary<string, string>
+                x.GetMetadata(this.eventA) == new Dictionary<string, string>
                 {
-                    { StandardMetadata.SourceId, eventA.SourceId.ToString() },
+                    { StandardMetadata.SourceId, this.eventA.SourceId.ToString() },
                     { StandardMetadata.SourceType, "SourceA" }, 
                     { StandardMetadata.Kind, StandardMetadata.EventKind },
                     { StandardMetadata.AssemblyName, "A" }, 
@@ -61,9 +61,9 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
                     { StandardMetadata.FullName, "Namespace.EventA" }, 
                     { StandardMetadata.TypeName, "EventA" }, 
                 } &&
-                x.GetMetadata(eventB) == new Dictionary<string, string>
+                x.GetMetadata(this.eventB) == new Dictionary<string, string>
                 {
-                    { StandardMetadata.SourceId, eventB.SourceId.ToString() },
+                    { StandardMetadata.SourceId, this.eventB.SourceId.ToString() },
                     { StandardMetadata.SourceType, "SourceB" }, 
                     { StandardMetadata.Kind, StandardMetadata.EventKind },
                     { StandardMetadata.AssemblyName, "B" }, 
@@ -71,9 +71,9 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
                     { StandardMetadata.FullName, "Namespace.EventB" }, 
                     { StandardMetadata.TypeName, "EventB" }, 
                 } &&
-                x.GetMetadata(eventC) == new Dictionary<string, string>
+                x.GetMetadata(this.eventC) == new Dictionary<string, string>
                 {
-                    { StandardMetadata.SourceId, eventC.SourceId.ToString() },
+                    { StandardMetadata.SourceId, this.eventC.SourceId.ToString() },
                     { StandardMetadata.SourceType, "SourceC" }, 
                     { StandardMetadata.Kind, StandardMetadata.EventKind },
                     { StandardMetadata.AssemblyName, "B" }, 
@@ -87,9 +87,15 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             this.sut = new AzureEventLogReader(this.account, this.tableName, new JsonTextSerializer());
 
             this.startEnqueueTime = new DateTime(2012, 06, 30, 23, 59, 0, DateTimeKind.Utc);
-            Save(eventA, startEnqueueTime);
-            Save(eventB, startEnqueueTime.AddMinutes(5));
-            Save(eventC, startEnqueueTime.AddMinutes(6));
+
+            Task.Run(async () =>
+            {
+                await this.Save(this.eventA, this.startEnqueueTime);
+                await this.Save(this.eventB, this.startEnqueueTime.AddMinutes(5));
+                await this.Save(this.eventC, this.startEnqueueTime.AddMinutes(6));
+            }).Wait();
+
+            
         }
 
         private async Task Save(IEvent @event, DateTime enqueueTime)
@@ -148,8 +154,8 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             var events = this.sut.Query(new QueryCriteria { Namespaces = { "Namespace" } }).ToList();
 
             Assert.Equal(2, events.Count);
-            Assert.True(events.Any(x => x.SourceId == eventA.SourceId));
-            Assert.True(events.Any(x => x.SourceId == eventB.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventA.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventB.SourceId));
         }
 
         [Fact]
@@ -166,7 +172,7 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             var events = this.sut.Query(new QueryCriteria { AssemblyNames = { "B" }, Namespaces = { "AnotherNamespace" } }).ToList();
 
             Assert.Equal(1, events.Count);
-            Assert.True(events.Any(x => x.SourceId == eventC.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventC.SourceId));
         }
 
         [Fact]
@@ -183,7 +189,7 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             var events = this.sut.Query(new QueryCriteria { FullNames = { "Namespace.EventA" } }).ToList();
 
             Assert.Equal(1, events.Count);
-            Assert.Equal(eventA.SourceId, events[0].SourceId);
+            Assert.Equal(this.eventA.SourceId, events[0].SourceId);
         }
 
         [Fact]
@@ -192,8 +198,8 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             var events = this.sut.Query(new QueryCriteria { FullNames = { "Namespace.EventA", "AnotherNamespace.EventC" } }).ToList();
 
             Assert.Equal(2, events.Count);
-            Assert.True(events.Any(x => x.SourceId == eventA.SourceId));
-            Assert.True(events.Any(x => x.SourceId == eventC.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventA.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventC.SourceId));
         }
 
         [Fact]
@@ -202,7 +208,7 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             var events = this.sut.Query(new QueryCriteria { TypeNames = { "EventA" } }).ToList();
 
             Assert.Equal(1, events.Count);
-            Assert.Equal(eventA.SourceId, events[0].SourceId);
+            Assert.Equal(this.eventA.SourceId, events[0].SourceId);
         }
 
         [Fact]
@@ -211,8 +217,8 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             var events = this.sut.Query(new QueryCriteria { TypeNames = { "EventA", "EventC" } }).ToList();
 
             Assert.Equal(2, events.Count);
-            Assert.True(events.Any(x => x.SourceId == eventA.SourceId));
-            Assert.True(events.Any(x => x.SourceId == eventC.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventA.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventC.SourceId));
         }
 
         [Fact]
@@ -221,27 +227,30 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
             var events = this.sut.Query(new QueryCriteria { AssemblyNames = { "B" }, TypeNames = { "EventB", "EventC" } }).ToList();
 
             Assert.Equal(2, events.Count);
-            Assert.True(events.Any(x => x.SourceId == eventB.SourceId));
-            Assert.True(events.Any(x => x.SourceId == eventC.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventB.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventC.SourceId));
         }
 
         [Fact]
         public void then_can_filter_by_source_id()
         {
-            var events = this.sut.Query(new QueryCriteria { SourceIds = { eventA.SourceId.ToString() } }).ToList();
+            var events = this.sut.Query(new QueryCriteria { SourceIds = {
+                this.eventA.SourceId.ToString() } }).ToList();
 
             Assert.Equal(1, events.Count);
-            Assert.Equal(eventA.SourceId, events[0].SourceId);
+            Assert.Equal(this.eventA.SourceId, events[0].SourceId);
         }
 
         [Fact]
         public void then_can_filter_by_source_ids()
         {
-            var events = this.sut.Query(new QueryCriteria { SourceIds = { eventA.SourceId.ToString(), eventC.SourceId.ToString() } }).ToList();
+            var events = this.sut.Query(new QueryCriteria { SourceIds = {
+                this.eventA.SourceId.ToString(),
+                this.eventC.SourceId.ToString() } }).ToList();
 
             Assert.Equal(2, events.Count);
-            Assert.True(events.Any(x => x.SourceId == eventA.SourceId));
-            Assert.True(events.Any(x => x.SourceId == eventC.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventA.SourceId));
+            Assert.True(events.Any(x => x.SourceId == this.eventC.SourceId));
         }
 
         [Fact]
@@ -263,7 +272,7 @@ namespace Infrastructure.Azure.IntegrationTests.AzureEventLogFixture
         [Fact]
         public void then_can_filter_by_end_date()
         {
-            var events = this.sut.Query(new QueryCriteria { EndDate = startEnqueueTime.AddMinutes(5.5) }).ToList();
+            var events = this.sut.Query(new QueryCriteria { EndDate = this.startEnqueueTime.AddMinutes(5.5) }).ToList();
 
             Assert.Equal(2, events.Count);
         }

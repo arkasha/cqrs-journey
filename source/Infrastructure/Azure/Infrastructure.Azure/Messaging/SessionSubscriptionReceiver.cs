@@ -98,10 +98,7 @@ namespace Infrastructure.Azure.Messaging
             this.requiresSequentialProcessing = requiresSequentialProcessing;
             this.instrumentation = instrumentation;
 
-            this.tokenProvider = TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey);
-            this.serviceUri = ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath);
-
-            var messagingFactory = MessagingFactory.Create(this.serviceUri, tokenProvider);
+            var messagingFactory = MessagingFactory.CreateFromConnectionString(settings.ConnectionString);
             this.client = messagingFactory.CreateSubscriptionClient(topic, subscription);
             if (this.requiresSequentialProcessing)
             {
@@ -179,7 +176,7 @@ namespace Infrastructure.Azure.Messaging
         /// </summary>
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 
@@ -201,7 +198,7 @@ namespace Infrastructure.Azure.Messaging
 
         ~SessionSubscriptionReceiver()
         {
-            Dispose(false);
+            this.Dispose(false);
         }
 
         private void AcceptSession(CancellationToken cancellationToken)
@@ -220,7 +217,7 @@ namespace Infrastructure.Azure.Messaging
                     if (!cancellationToken.IsCancellationRequested)
                     {
                         // Continue accepting new sessions until told to stop regardless of any exceptions.
-                        TaskEx.Delay(10000).ContinueWith(t => AcceptSession(cancellationToken));
+                        TaskEx.Delay(10000).ContinueWith(t => this.AcceptSession(cancellationToken));
                     }
                 };
                 this.receiveRetryPolicy.ExecuteAsync(

@@ -24,7 +24,7 @@ namespace Infrastructure.Sql.IntegrationTests
 
         public BlobStorageDbContextFixture()
         {
-            using (var context = new BlobStorageDbContext(dbName))
+            using (var context = new BlobStorageDbContext(this.dbName))
             {
                 if (context.Database.Exists())
                 {
@@ -37,7 +37,7 @@ namespace Infrastructure.Sql.IntegrationTests
 
         public void Dispose()
         {
-            using (var context = new BlobStorageDbContext(dbName))
+            using (var context = new BlobStorageDbContext(this.dbName))
             {
                 if (context.Database.Exists())
                 {

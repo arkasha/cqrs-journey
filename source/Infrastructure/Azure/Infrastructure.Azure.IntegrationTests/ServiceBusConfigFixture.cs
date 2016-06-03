@@ -40,29 +40,27 @@ namespace Infrastructure.Azure.IntegrationTests.ServiceBusConfigFixture
             {
                 topic.Path = topic.Path + Guid.NewGuid().ToString();
             }
-
-            var tokenProvider = TokenProvider.CreateSharedSecretTokenProvider(this.settings.TokenIssuer, this.settings.TokenAccessKey);
-            var serviceUri = ServiceBusEnvironment.CreateServiceUri(this.settings.ServiceUriScheme, this.settings.ServiceNamespace, this.settings.ServicePath);
-            this.namespaceManager = new NamespaceManager(serviceUri, tokenProvider);
+            
+            this.namespaceManager = NamespaceManager.CreateFromConnectionString(settings.ConnectionString);
 
             var retryStrategy = new Incremental(3, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(1));
             this.retryPolicy = new RetryPolicy<ServiceBusTransientErrorDetectionStrategy>(retryStrategy);
 
             this.sut = new ServiceBusConfig(this.settings);
 
-            Cleanup();
+            this.Cleanup();
         }
 
         public void Dispose()
         {
-            Cleanup();
+            this.Cleanup();
         }
 
         private void Cleanup()
         {
             foreach (var topic in this.settings.Topics)
             {
-                retryPolicy.ExecuteAction(() =>
+                this.retryPolicy.ExecuteAction(() =>
                 {
                     try { this.namespaceManager.DeleteTopic(topic.Path); }
                     catch (MessagingEntityNotFoundException) { }
@@ -108,8 +106,8 @@ namespace Infrastructure.Azure.IntegrationTests.ServiceBusConfigFixture
         [Fact]
         public void when_initialized_then_subscriptions_updates_existing_filters()
         {
-            settings.Topics = settings.Topics.Take(1).ToList();
-            var topic = settings.Topics.First();
+            this.settings.Topics = this.settings.Topics.Take(1).ToList();
+            var topic = this.settings.Topics.First();
             topic.Subscriptions = topic.Subscriptions.Take(1).ToList();
             var subscription = topic.Subscriptions.First();
             subscription.SqlFilter = "TypeName='MyTypeA'";
@@ -179,8 +177,8 @@ namespace Infrastructure.Azure.IntegrationTests.ServiceBusConfigFixture
         [Fact]
         public void runs_migration_support_actions()
         {
-            settings.Topics = settings.Topics.Take(1).ToList();
-            var topic = settings.Topics.First();
+            this.settings.Topics = this.settings.Topics.Take(1).ToList();
+            var topic = this.settings.Topics.First();
             topic.Subscriptions = topic.Subscriptions.Take(1).ToList();
             topic.MigrationSupport.Clear();
             var subscription = topic.Subscriptions.First();
@@ -200,8 +198,8 @@ namespace Infrastructure.Azure.IntegrationTests.ServiceBusConfigFixture
         [Fact]
         public void migration_support_action_noops_if_subscription_does_not_exist()
         {
-            settings.Topics = settings.Topics.Take(1).ToList();
-            var topic = settings.Topics.First();
+            this.settings.Topics = this.settings.Topics.Take(1).ToList();
+            var topic = this.settings.Topics.First();
             topic.Subscriptions.Clear();
             topic.MigrationSupport.Clear();
             topic.MigrationSupport.Add(new UpdateSubscriptionIfExists { Name = "TestSubscription", SqlFilter = "1=0" });

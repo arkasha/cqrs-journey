@@ -88,7 +88,7 @@ namespace Infrastructure.Azure.Instrumentation
 
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 

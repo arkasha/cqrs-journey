@@ -24,10 +24,10 @@ namespace Infrastructure.Azure.Utils
         private static readonly RetryStrategy retryStrategy =
             new ExponentialBackoff(3, TimeSpan.FromSeconds(.5d), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(2)) { FastFirstRetry = true };
 
-        public static void SafeCompleteAsync(this BrokeredMessage message, string subscription, Action<bool> callback, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        public static async Task SafeCompleteAsync(this BrokeredMessage message, string subscription, Action<bool> callback, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
         {
-            SafeMessagingActionAsync(
-                message.CompleteAsync(),
+            await SafeMessagingActionAsync(
+                message.CompleteAsync,
                 message,
                 callback,
                 "An error occurred while completing message {0} in subscription {1} with processing time {3} (scheduling {4} request {5} roundtrip {6}). Error message: {2}",
@@ -38,10 +38,10 @@ namespace Infrastructure.Azure.Utils
                 roundtripStopwatch);
         }
 
-        public static void SafeAbandonAsync(this BrokeredMessage message, string subscription, Action<bool> callback, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        public static async Task SafeAbandonAsync(this BrokeredMessage message, string subscription, Action<bool> callback, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
         {
-            SafeMessagingActionAsync(
-                message.AbandonAsync(),
+            await SafeMessagingActionAsync(
+                message.AbandonAsync,
                 message,
                 callback,
                 "An error occurred while abandoning message {0} in subscription {1} with processing time {3} (scheduling {4} request {5} roundtrip {6}). Error message: {2}",
@@ -52,10 +52,10 @@ namespace Infrastructure.Azure.Utils
                 roundtripStopwatch);
         }
 
-        public static void SafeDeadLetterAsync(this BrokeredMessage message, string subscription, string reason, string description, Action<bool> callback, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        public static async Task SafeDeadLetterAsync(this BrokeredMessage message, string subscription, string reason, string description, Action<bool> callback, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
         {
-            SafeMessagingActionAsync(
-                message.DeadLetterAsync(reason, description),
+            await SafeMessagingActionAsync(
+                message.DeadLetterAsync,
                 message,
                 callback,
                 "An error occurred while dead-lettering message {0} in subscription {1} with processing time {3} (scheduling {4} request {5} roundtrip {6}). Error message: {2}",
@@ -66,7 +66,7 @@ namespace Infrastructure.Azure.Utils
                 roundtripStopwatch);
         }
 
-        internal static void SafeMessagingActionAsync(Task task, BrokeredMessage message, Action<bool> callback, string actionErrorDescription, string messageId, string subscription, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        internal static async Task SafeMessagingActionAsync(Func<Task> task, BrokeredMessage message, Action<bool> callback, string actionErrorDescription, string messageId, string subscription, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
         {
             var retryPolicy = new RetryPolicy<ServiceBusTransientErrorDetectionStrategy>(retryStrategy);
             retryPolicy.Retrying +=
@@ -81,10 +81,10 @@ namespace Infrastructure.Azure.Utils
 
             long messagingActionStart = 0;
 
-            retryPolicy.ExecuteAsync(() =>
+            await retryPolicy.ExecuteAsync(() =>
             {
                 messagingActionStart = roundtripStopwatch.ElapsedMilliseconds;
-                return task;
+                return task();
             }).ContinueWith(t =>
             {
                 if (t.IsFaulted)

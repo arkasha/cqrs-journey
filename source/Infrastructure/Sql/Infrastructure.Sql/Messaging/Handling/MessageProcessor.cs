@@ -45,12 +45,12 @@ namespace Infrastructure.Sql.Messaging.Handling
         /// </summary>
         public virtual void Start()
         {
-            ThrowIfDisposed();
+            this.ThrowIfDisposed();
             lock (this.lockObject)
             {
                 if (!this.started)
                 {
-                    this.receiver.MessageReceived += OnMessageReceived;
+                    this.receiver.MessageReceived += this.OnMessageReceived;
                     this.receiver.Start();
                     this.started = true;
                 }
@@ -67,7 +67,7 @@ namespace Infrastructure.Sql.Messaging.Handling
                 if (this.started)
                 {
                     this.receiver.Stop();
-                    this.receiver.MessageReceived -= OnMessageReceived;
+                    this.receiver.MessageReceived -= this.OnMessageReceived;
                     this.started = false;
                 }
             }
@@ -78,7 +78,7 @@ namespace Infrastructure.Sql.Messaging.Handling
         /// </summary>
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 
@@ -106,7 +106,7 @@ namespace Infrastructure.Sql.Messaging.Handling
 
         ~MessageProcessor()
         {
-            Dispose(false);
+            this.Dispose(false);
         }
 
         private void OnMessageReceived(object sender, MessageReceivedEventArgs args)
@@ -115,12 +115,12 @@ namespace Infrastructure.Sql.Messaging.Handling
 
             try
             {
-                var body = Deserialize(args.Message.Body);
+                var body = this.Deserialize(args.Message.Body);
 
-                TracePayload(body);
+                this.TracePayload(body);
                 Trace.WriteLine("");
 
-                ProcessMessage(body, args.Message.CorrelationId);
+                this.ProcessMessage(body, args.Message.CorrelationId);
 
                 Trace.WriteLine(new string('-', 100));
             }

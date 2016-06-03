@@ -48,7 +48,7 @@ namespace Infrastructure.Azure.Messaging
         /// </summary>
         public void Publish(Envelope<IEvent> @event)
         {
-            this.sender.Send(() => BuildMessage(@event));
+            this.sender.Send(() => this.BuildMessage(@event));
         }
 
         /// <summary>

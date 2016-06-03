@@ -67,7 +67,7 @@ namespace Infrastructure.Sql.EventSourcing
 
                 if (deserialized.Any())
                 {
-                    return entityFactory.Invoke(id, deserialized);
+                    return this.entityFactory.Invoke(id, deserialized);
                 }
 
                 return null;

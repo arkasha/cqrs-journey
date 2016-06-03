@@ -250,7 +250,7 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
             public void Handle(FooCommand command)
             {
                 this.Called = true;
-                e.Set();
+                this.e.Set();
             }
 
             public bool Called { get; set; }
@@ -268,7 +268,7 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
             public void Handle(BarCommand command)
             {
                 this.Called = true;
-                e.Set();
+                this.e.Set();
             }
 
             public bool Called { get; set; }

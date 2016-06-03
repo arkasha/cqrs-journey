@@ -101,10 +101,7 @@ namespace Infrastructure.Azure.Messaging
             this.processInParallel = processInParallel;
             this.instrumentation = instrumentation;
 
-            this.tokenProvider = TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey);
-            this.serviceUri = ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath);
-
-            var messagingFactory = MessagingFactory.Create(this.serviceUri, tokenProvider);
+            var messagingFactory = MessagingFactory.CreateFromConnectionString(settings.ConnectionString);
             this.client = messagingFactory.CreateSubscriptionClient(topic, subscription);
             if (this.processInParallel)
             {
@@ -180,7 +177,7 @@ namespace Infrastructure.Azure.Messaging
         /// </summary>
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 
@@ -202,7 +199,7 @@ namespace Infrastructure.Azure.Messaging
 
         ~SubscriptionReceiver()
         {
-            Dispose(false);
+            this.Dispose(false);
         }
 
         /// <summary>

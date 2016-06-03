@@ -44,7 +44,7 @@ namespace Infrastructure.Azure.Messaging
         /// </summary>
         public void Send(Envelope<ICommand> command)
         {
-            this.sender.Send(() => BuildMessage(command));
+            this.sender.Send(() => this.BuildMessage(command));
         }
 
         public void Send(IEnumerable<Envelope<ICommand>> commands)

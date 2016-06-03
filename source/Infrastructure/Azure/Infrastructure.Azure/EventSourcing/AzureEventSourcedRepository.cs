@@ -80,17 +80,17 @@ namespace Infrastructure.Azure.EventSourcing
                 this.originatorEntityFactory = (id, memento, events) => (T)mementoConstructor.Invoke(new object[] { id, memento, events });
                 this.cacheMementoIfApplicable = (T originator) =>
                     {
-                        string key = GetPartitionKey(originator.Id);
+                        string key = this.GetPartitionKey(originator.Id);
                         var memento = ((IMementoOriginator)originator).SaveToMemento();
                         this.cache.Set(
                             key,
                             new Tuple<IMemento, DateTime?>(memento, DateTime.UtcNow),
                             new CacheItemPolicy { AbsoluteExpiration = DateTimeOffset.UtcNow.AddMinutes(30) });
                     };
-                this.getMementoFromCache = id => (Tuple<IMemento, DateTime?>)this.cache.Get(GetPartitionKey(id));
+                this.getMementoFromCache = id => (Tuple<IMemento, DateTime?>)this.cache.Get(this.GetPartitionKey(id));
                 this.markCacheAsStale = id =>
                 {
-                    var key = GetPartitionKey(id);
+                    var key = this.GetPartitionKey(id);
                     var item = (Tuple<IMemento, DateTime?>)this.cache.Get(key);
                     if (item != null && item.Item2.HasValue)
                     {
@@ -121,7 +121,7 @@ namespace Infrastructure.Azure.EventSourcing
                 IEnumerable<IVersionedEvent> deserialized;
                 if (!cachedMemento.Item2.HasValue || cachedMemento.Item2.Value < DateTime.UtcNow.AddSeconds(-1))
                 {
-                    deserialized = (await this.eventStore.Load(GetPartitionKey(id), cachedMemento.Item1.Version + 1)).Select(this.Deserialize);
+                    deserialized = (await this.eventStore.Load(this.GetPartitionKey(id), cachedMemento.Item1.Version + 1)).Select(this.Deserialize);
                 }
                 else
                 {
@@ -137,7 +137,7 @@ namespace Infrastructure.Azure.EventSourcing
             }
             else
             {
-                var deserialized = (await this.eventStore.Load(GetPartitionKey(id), 0))
+                var deserialized = (await this.eventStore.Load(this.GetPartitionKey(id), 0))
                     .Select(this.Deserialize)
                     .AsCachedAnyEnumerable();
 

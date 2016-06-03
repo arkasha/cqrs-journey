@@ -136,13 +136,12 @@ namespace Infrastructure.Azure.EventSourcing
             {
                 await this.eventStoreRetryPolicy.ExecuteAction(() => table.ExecuteBatchAsync(batchOperation));
             }
-            catch (Exception ex)
+            catch (StorageException ex)
             {
-                //var inner = ex.InnerException as DataServiceClientException;
-                //if (inner != null && inner.StatusCode == (int)HttpStatusCode.Conflict)
-                //{
-                //    throw new ConcurrencyException();
-                //}
+                if (ex.RequestInformation.HttpStatusCode == (int)HttpStatusCode.Conflict)
+                {
+                    throw new ConcurrencyException();
+                }
 
                 throw;
             }
@@ -186,7 +185,7 @@ namespace Infrastructure.Azure.EventSourcing
         public async Task DeletePendingAsync(string partitionKey, string rowKey, Action<bool> successCallback, Action<Exception> exceptionCallback)
         {
             var table = this.tableClient.GetTableReference(this.tableName);
-            var item = new EventTableEntity { PartitionKey = partitionKey, RowKey = rowKey };
+            var item = new EventTableEntity { PartitionKey = partitionKey, RowKey = rowKey, ETag = "*"};
 
             var operation = TableOperation.Delete(item);
 
@@ -194,11 +193,16 @@ namespace Infrastructure.Azure.EventSourcing
             {
                 if (t.IsFaulted)
                 {
-                    exceptionCallback(t.Exception.InnerException);
+                    var inner = t.Exception?.InnerException as StorageException;
+
+                    if (inner != null && inner.RequestInformation.HttpStatusCode == (int)HttpStatusCode.NotFound)
+                        successCallback(true);
+                    else
+                        exceptionCallback(t.Exception?.InnerException);
                 }
                 else if (!t.IsCanceled)
                 {
-                    successCallback(t.Result.HttpStatusCode == (int)HttpStatusCode.OK);
+                    successCallback(t.Result.HttpStatusCode == (int)HttpStatusCode.NoContent);
                 }
             });
         }

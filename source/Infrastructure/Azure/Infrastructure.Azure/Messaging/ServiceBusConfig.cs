@@ -40,16 +40,14 @@ namespace Infrastructure.Azure.Messaging
         {
             var retryStrategy = new Incremental(3, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(1));
             var retryPolicy = new RetryPolicy<ServiceBusTransientErrorDetectionStrategy>(retryStrategy);
-            var tokenProvider = TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey);
-            var serviceUri = ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath);
-            var namespaceManager = new NamespaceManager(serviceUri, tokenProvider);
+            var namespaceManager = NamespaceManager.CreateFromConnectionString(this.settings.ConnectionString);
 
             this.settings.Topics.AsParallel().ForAll(topic =>
             {
-                retryPolicy.ExecuteAction(() => CreateTopicIfNotExists(namespaceManager, topic));
+                retryPolicy.ExecuteAction(() => this.CreateTopicIfNotExists(namespaceManager, topic));
                 topic.Subscriptions.AsParallel().ForAll(subscription =>
                 {
-                    retryPolicy.ExecuteAction(() => CreateSubscriptionIfNotExists(namespaceManager, topic, subscription));
+                    retryPolicy.ExecuteAction(() => this.CreateSubscriptionIfNotExists(namespaceManager, topic, subscription));
                     retryPolicy.ExecuteAction(() => UpdateRules(namespaceManager, topic, subscription));
                 });
             });

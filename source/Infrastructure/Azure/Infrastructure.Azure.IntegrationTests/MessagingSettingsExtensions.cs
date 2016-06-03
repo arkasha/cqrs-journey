@@ -24,27 +24,21 @@ namespace Infrastructure.Azure
     {
         public static MessageReceiver CreateMessageReceiver(this ServiceBusSettings settings, string topic, string subscription)
         {
-            var tokenProvider = TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey);
-            var serviceUri = ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath);
-            var messagingFactory = MessagingFactory.Create(serviceUri, tokenProvider);
+            var messagingFactory = MessagingFactory.CreateFromConnectionString(settings.ConnectionString);
 
             return messagingFactory.CreateMessageReceiver(SubscriptionClient.FormatDeadLetterPath(topic, subscription));
         }
 
         public static SubscriptionClient CreateSubscriptionClient(this ServiceBusSettings settings, string topic, string subscription, ReceiveMode mode = ReceiveMode.PeekLock)
         {
-            var tokenProvider = TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey);
-            var serviceUri = ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath);
-            var messagingFactory = MessagingFactory.Create(serviceUri, tokenProvider);
+            var messagingFactory = MessagingFactory.CreateFromConnectionString(settings.ConnectionString);
 
             return messagingFactory.CreateSubscriptionClient(topic, subscription, mode);
         }
 
         public static TopicClient CreateTopicClient(this ServiceBusSettings settings, string topic)
         {
-            var tokenProvider = TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey);
-            var serviceUri = ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath);
-            var messagingFactory = MessagingFactory.Create(serviceUri, tokenProvider);
+            var messagingFactory = MessagingFactory.CreateFromConnectionString(settings.ConnectionString);
 
             return messagingFactory.CreateTopicClient(topic);
         }
@@ -52,40 +46,28 @@ namespace Infrastructure.Azure
 
         public static void CreateTopic(this ServiceBusSettings settings, string topic)
         {
-            new NamespaceManager(
-                ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath),
-                TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey))
-                .CreateTopic(topic);
+            NamespaceManager.CreateFromConnectionString(settings.ConnectionString).CreateTopic(topic);
         }
 
         public static void CreateSubscription(this ServiceBusSettings settings, string topic, string subscription)
         {
             CreateTopic(settings, topic);
 
-            new NamespaceManager(
-                ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath),
-                TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey))
-                .CreateSubscription(topic, subscription);
+            NamespaceManager.CreateFromConnectionString(settings.ConnectionString).CreateSubscription(topic, subscription);
         }
 
         public static void CreateSubscription(this ServiceBusSettings settings, SubscriptionDescription description)
         {
             CreateTopic(settings, description.TopicPath);
 
-            new NamespaceManager(
-                ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath),
-                TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey))
-                .CreateSubscription(description);
+            NamespaceManager.CreateFromConnectionString(settings.ConnectionString).CreateSubscription(description);
         }
 
         public static void TryDeleteSubscription(this ServiceBusSettings settings, string topic, string subscription)
         {
             try
             {
-                new NamespaceManager(
-                    ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath),
-                    TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey))
-                    .DeleteSubscription(topic, subscription);
+                NamespaceManager.CreateFromConnectionString(settings.ConnectionString).DeleteSubscription(topic, subscription);
             }
             catch { }
         }
@@ -94,10 +76,7 @@ namespace Infrastructure.Azure
         {
             try
             {
-                new NamespaceManager(
-                    ServiceBusEnvironment.CreateServiceUri(settings.ServiceUriScheme, settings.ServiceNamespace, settings.ServicePath),
-                    TokenProvider.CreateSharedSecretTokenProvider(settings.TokenIssuer, settings.TokenAccessKey))
-                    .DeleteTopic(topic);
+                NamespaceManager.CreateFromConnectionString(settings.ConnectionString).DeleteTopic(topic);
             }
             catch { }
         }

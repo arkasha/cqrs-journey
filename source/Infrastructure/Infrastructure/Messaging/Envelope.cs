@@ -69,7 +69,7 @@ namespace Infrastructure.Messaging
 
         public static implicit operator Envelope<T>(T body)
         {
-            return Envelope.Create(body);
+            return Create(body);
         }
     }
 }

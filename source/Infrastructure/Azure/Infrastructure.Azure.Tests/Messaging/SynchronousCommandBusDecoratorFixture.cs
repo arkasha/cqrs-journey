@@ -82,7 +82,7 @@ namespace Infrastructure.Azure.Tests.Messaging.SynchronousCommandBusDecoratorFix
             this.handlerBMock.Setup(h => h.Handle(It.IsAny<CommandB>())).Callback<CommandB>(c => this.synchronous.Add(c));
             this.wrappedBusMock
                 .Setup(b => b.Send(It.IsAny<IEnumerable<Envelope<ICommand>>>()))
-                .Callback<IEnumerable<Envelope<ICommand>>>(es => forwarded.AddRange(es.Select(e => e.Body)));
+                .Callback<IEnumerable<Envelope<ICommand>>>(es => this.forwarded.AddRange(es.Select(e => e.Body)));
         }
     }
 

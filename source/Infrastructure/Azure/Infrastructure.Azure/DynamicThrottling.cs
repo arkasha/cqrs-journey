@@ -87,7 +87,7 @@ namespace Infrastructure.Azure
         {
             Interlocked.Decrement(ref this.currentParallelJobs);
             // Trace.WriteLine("Job finished. Parallel jobs are now: " + this.currentParallelJobs);
-            IncrementDegreesOfParallelism(workCompletedParallelismGain);
+            this.IncrementDegreesOfParallelism(this.workCompletedParallelismGain);
         }
 
         public void NotifyWorkStarted()
@@ -118,12 +118,12 @@ namespace Infrastructure.Azure
                 cancellationToken.Register(() => this.parallelismRestoringTimer.Change(Timeout.Infinite, Timeout.Infinite));
             }
 
-            this.parallelismRestoringTimer.Change(intervalForRestoringDegreeOfParallelism, intervalForRestoringDegreeOfParallelism);
+            this.parallelismRestoringTimer.Change(this.intervalForRestoringDegreeOfParallelism, this.intervalForRestoringDegreeOfParallelism);
         }
 
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 
@@ -138,12 +138,12 @@ namespace Infrastructure.Azure
 
         private void IncrementDegreesOfParallelism(int count)
         {
-            if (this.availableDegreesOfParallelism < maxDegreeOfParallelism)
+            if (this.availableDegreesOfParallelism < this.maxDegreeOfParallelism)
             {
                 this.availableDegreesOfParallelism += count;
-                if (this.availableDegreesOfParallelism >= maxDegreeOfParallelism)
+                if (this.availableDegreesOfParallelism >= this.maxDegreeOfParallelism)
                 {
-                    this.availableDegreesOfParallelism = maxDegreeOfParallelism;
+                    this.availableDegreesOfParallelism = this.maxDegreeOfParallelism;
                     // Trace.WriteLine("Incremented available degrees of parallelism. Available: " + this.availableDegreesOfParallelism);
                 }
             }
@@ -154,9 +154,9 @@ namespace Infrastructure.Azure
         private void DecrementDegreesOfParallelism(int count)
         {
             this.availableDegreesOfParallelism -= count;
-            if (this.availableDegreesOfParallelism < minDegreeOfParallelism)
+            if (this.availableDegreesOfParallelism < this.minDegreeOfParallelism)
             {
-                this.availableDegreesOfParallelism = minDegreeOfParallelism;
+                this.availableDegreesOfParallelism = this.minDegreeOfParallelism;
             }
             // Trace.WriteLine("Decremented available degrees of parallelism. Available: " + this.availableDegreesOfParallelism);
         }

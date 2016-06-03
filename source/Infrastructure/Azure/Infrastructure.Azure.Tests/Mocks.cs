@@ -129,7 +129,7 @@ namespace Infrastructure.Azure.Tests.Mocks
                     }
                     else
                     {
-                        AsyncSuccessCallbacks.Add(successCallback);
+                        this.AsyncSuccessCallbacks.Add(successCallback);
                     }
                 },
                 TaskCreationOptions.AttachedToParent);

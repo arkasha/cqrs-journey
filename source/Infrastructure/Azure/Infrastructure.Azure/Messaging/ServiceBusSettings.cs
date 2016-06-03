@@ -30,12 +30,7 @@ namespace Infrastructure.Azure.Messaging
         /// </summary>
         public ServiceBusSettings()
         {
-            this.ServiceUriScheme = string.Empty;
-            this.ServiceNamespace = string.Empty;
-            this.ServicePath = string.Empty;
-
-            this.TokenIssuer = string.Empty;
-            this.TokenAccessKey = string.Empty;
+            this.ConnectionString = string.Empty;
 
             this.Topics = new List<TopicSettings>();
         }
@@ -43,23 +38,7 @@ namespace Infrastructure.Azure.Messaging
         /// <summary>
         /// Gets or sets the service URI scheme.
         /// </summary>
-        public string ServiceUriScheme { get; set; }
-        /// <summary>
-        /// Gets or sets the service namespace.
-        /// </summary>
-        public string ServiceNamespace { get; set; }
-        /// <summary>
-        /// Gets or sets the service path.
-        /// </summary>
-        public string ServicePath { get; set; }
-        /// <summary>
-        /// Gets or sets the token issuer.
-        /// </summary>
-        public string TokenIssuer { get; set; }
-        /// <summary>
-        /// Gets or sets the token access key.
-        /// </summary>
-        public string TokenAccessKey { get; set; }
+        public string ConnectionString { get; set; }
 
         [XmlArray(ElementName = "Topics", Namespace = InfrastructureSettings.XmlNamespace)]
         [XmlArrayItem(ElementName = "Topic", Namespace = InfrastructureSettings.XmlNamespace)]

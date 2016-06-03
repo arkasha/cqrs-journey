@@ -22,7 +22,7 @@ namespace Infrastructure.Azure.Instrumentation
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Reliability", "CA2000:Dispose objects before losing scope", Justification = "By design")]
         public AzureInstrumentationInstaller()
         {
-            InitializeComponent();
+            this.InitializeComponent();
 
             // Receiver performance counters
             {

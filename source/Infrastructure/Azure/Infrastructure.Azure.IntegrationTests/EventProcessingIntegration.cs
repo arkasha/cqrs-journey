@@ -209,7 +209,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventBusIntegration
             public void Handle(FooEvent command)
             {
                 this.Called = true;
-                e.Set();
+                this.e.Set();
             }
 
             public bool Called { get; set; }
@@ -229,7 +229,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventBusIntegration
                 this.Called = true;
                 this.MessageId = command.MessageId;
                 this.CorrelationId = command.CorrelationId;
-                e.Set();
+                this.e.Set();
             }
 
             public bool Called { get; set; }
@@ -251,7 +251,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventBusIntegration
             public void Handle(BarEvent command)
             {
                 this.Called = true;
-                e.Set();
+                this.e.Set();
             }
 
             public bool Called { get; set; }

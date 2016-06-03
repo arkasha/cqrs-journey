@@ -53,7 +53,7 @@ namespace Infrastructure.Sql.Messaging.Handling
                 .Select(iface => iface.GetGenericArguments()[0])
                 .ToList();
 
-            if (handlers.Keys.Any(registeredType => supportedCommandTypes.Contains(registeredType)))
+            if (this.handlers.Keys.Any(registeredType => supportedCommandTypes.Contains(registeredType)))
                 throw new ArgumentException("The command handled by the received handler already has a registered handler.");
 
             // Register this handler for each of the handled types.

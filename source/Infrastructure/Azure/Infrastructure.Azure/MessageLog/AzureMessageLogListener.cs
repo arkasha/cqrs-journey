@@ -45,7 +45,7 @@ namespace Infrastructure.Azure.MessageLog
 
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 

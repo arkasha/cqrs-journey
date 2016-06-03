@@ -43,7 +43,7 @@ namespace Infrastructure.Sql.Messaging.Implementation
             {
                 connection.Open();
 
-                InsertMessage(message, connection);
+                this.InsertMessage(message, connection);
             }
         }
 

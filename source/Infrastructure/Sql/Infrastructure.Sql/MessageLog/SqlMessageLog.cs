@@ -51,7 +51,7 @@ namespace Infrastructure.Sql.MessageLog
                     TypeName = metadata.TryGetValue(StandardMetadata.TypeName),
                     SourceType = metadata.TryGetValue(StandardMetadata.SourceType) as string,
                     CreationDate = DateTime.UtcNow.ToString("o"),
-                    Payload = serializer.Serialize(@event),
+                    Payload = this.serializer.Serialize(@event),
                 });
                 context.SaveChanges();
             }
@@ -74,7 +74,7 @@ namespace Infrastructure.Sql.MessageLog
                     TypeName = metadata.TryGetValue(StandardMetadata.TypeName),
                     SourceType = metadata.TryGetValue(StandardMetadata.SourceType) as string,
                     CreationDate = DateTime.UtcNow.ToString("o"),
-                    Payload = serializer.Serialize(command),
+                    Payload = this.serializer.Serialize(command),
                 });
                 context.SaveChanges();
             }
@@ -105,7 +105,7 @@ namespace Infrastructure.Sql.MessageLog
 
             IEnumerator IEnumerable.GetEnumerator()
             {
-                return GetEnumerator();
+                return this.GetEnumerator();
             }
 
             private class DisposingEnumerator : IEnumerator<IEvent>
@@ -121,45 +121,45 @@ namespace Infrastructure.Sql.MessageLog
 
                 ~DisposingEnumerator()
                 {
-                    if (context != null) context.Dispose();
+                    if (this.context != null) this.context.Dispose();
                 }
 
                 public void Dispose()
                 {
-                    if (context != null)
+                    if (this.context != null)
                     {
-                        context.Dispose();
-                        context = null;
+                        this.context.Dispose();
+                        this.context = null;
                         GC.SuppressFinalize(this);
                     }
-                    if (events != null)
+                    if (this.events != null)
                     {
-                        events.Dispose();
+                        this.events.Dispose();
                     }
                 }
 
-                public IEvent Current { get { return events.Current; } }
+                public IEvent Current { get { return this.events.Current; } }
                 object IEnumerator.Current { get { return this.Current; } }
 
                 public bool MoveNext()
                 {
-                    if (context == null)
+                    if (this.context == null)
                     {
-                        context = new MessageLogDbContext(sqlQuery.nameOrConnectionString);
-                        var queryable = context.Set<MessageLogEntity>().AsQueryable()
+                        this.context = new MessageLogDbContext(this.sqlQuery.nameOrConnectionString);
+                        var queryable = this.context.Set<MessageLogEntity>().AsQueryable()
                             .Where(x => x.Kind == StandardMetadata.EventKind);
 
-                        var where = sqlQuery.criteria.ToExpression();
+                        var where = this.sqlQuery.criteria.ToExpression();
                         if (where != null)
                             queryable = queryable.Where(where);
 
-                        events = queryable
+                        this.events = queryable
                             .AsEnumerable()
                             .Select(x => this.sqlQuery.serializer.Deserialize<IEvent>(x.Payload))
                             .GetEnumerator();
                     }
 
-                    return events.MoveNext();
+                    return this.events.MoveNext();
                 }
 
                 public void Reset()

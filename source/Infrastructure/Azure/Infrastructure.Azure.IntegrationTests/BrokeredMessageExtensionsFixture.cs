@@ -23,16 +23,25 @@ namespace Infrastructure.Azure.IntegrationTests
 
     public class BrokeredMessageExtensionsFixture
     {
+
         [Fact]
-        public void when_failing_transiently_then_retries()
+        public async Task when_failing_transiently_then_retries()
         {
             int endCounts = 0;
             bool? success = null;
             var stopwatch = Stopwatch.StartNew();
 
-            BrokeredMessageExtensions
+            Func<Task> timeout = () =>
+            {
+                return Task.Run(() =>
+                {
+                    if (++endCounts < 2) throw new TimeoutException();
+                });
+            };
+
+            await BrokeredMessageExtensions
                 .SafeMessagingActionAsync(
-                   new Task(() => { if (++endCounts < 2) throw new TimeoutException(); }),
+                   timeout,
                    new BrokeredMessage(),
                    s => success = s,
                    "error: '{0}' '{1}' '{2}' '{3}' '{4}' '{5}' '{6}'",
@@ -49,14 +58,22 @@ namespace Infrastructure.Azure.IntegrationTests
         }
 
         [Fact]
-        public void when_failing_transiently_then_retries_until_maximum_retries()
+        public async Task when_failing_transiently_then_retries_until_maximum_retries()
         {
             bool? success = null;
             var stopwatch = Stopwatch.StartNew();
 
-            BrokeredMessageExtensions
+            Func<Task> timeout = () =>
+            {
+                return Task.Run(() =>
+                {
+                    throw new TimeoutException();
+                });
+            };
+
+            await BrokeredMessageExtensions
                 .SafeMessagingActionAsync(
-                   new Task(() => { throw new TimeoutException(); }), 
+                   timeout, 
                    new BrokeredMessage(),
                    s => success = s,
                    "error: '{0}' '{1}' '{2}' '{3}' '{4}' '{5}' '{6}'",
