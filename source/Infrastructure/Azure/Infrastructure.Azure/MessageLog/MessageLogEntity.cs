@@ -14,7 +14,6 @@
 namespace Infrastructure.Azure.MessageLog
 {
     using Microsoft.WindowsAzure.Storage.Table;
-    using Microsoft.WindowsAzure.StorageClient;
 
     public class MessageLogEntity : TableEntity
     {

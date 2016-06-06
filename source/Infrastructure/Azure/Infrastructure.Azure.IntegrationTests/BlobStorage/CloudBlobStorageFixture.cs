@@ -15,9 +15,9 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
 {
     using System;
     using System.Text;
+    using System.Threading.Tasks;
     using Infrastructure.Azure.BlobStorage;
-    using Microsoft.WindowsAzure;
-    using Microsoft.WindowsAzure.StorageClient;
+    using Microsoft.WindowsAzure.Storage;
     using Xunit;
 
     public class given_blob_storage : IDisposable
@@ -43,7 +43,7 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
             {
                 containerReference.Delete();
             }
-            catch (StorageClientException)
+            catch (StorageException)
             {
             }
         }
@@ -55,7 +55,7 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
 
         public when_retrieving_from_non_existing_container()
         {
-            this.bytes = this.sut.Find(Guid.NewGuid().ToString());
+            this.bytes = this.sut.FindAsync(Guid.NewGuid().ToString()).Result;
         }
 
         [Fact]
@@ -94,7 +94,7 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
             {
                 containerReference.Delete();
             }
-            catch (StorageClientException)
+            catch (StorageException)
             {
             }
         }
@@ -106,7 +106,7 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
 
         public when_retrieving_non_existing_blob()
         {
-            this.bytes = this.sut.Find(Guid.NewGuid().ToString());
+            this.bytes = this.sut.FindAsync(Guid.NewGuid().ToString()).Result;
         }
 
         [Fact]
@@ -116,9 +116,9 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
         }
 
         [Fact]
-        public void then_can_delete_blob()
+        public async Task then_can_delete_blob()
         {
-            this.sut.Delete(Guid.NewGuid().ToString());
+            await this.sut.DeleteAsync(Guid.NewGuid().ToString());
         }
     }
 
@@ -132,55 +132,56 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
             this.id = Guid.NewGuid().ToString();
             this.bytes = Guid.NewGuid().ToByteArray();
 
-            this.sut.Save(this.id, "text/plain", this.bytes);
+            this.sut.SaveAsync(this.id, "text/plain", this.bytes).Wait();
         }
 
         [Fact]
         public void then_writes_blob()
         {
             var client = this.account.CreateCloudBlobClient();
-            var blobReference = client.GetBlobReference(this.rootContainerName + '/' + this.id);
+            var container = client.GetContainerReference(this.rootContainerName);
+            var blobReference = container.GetBlobReference(this.id);
 
             blobReference.FetchAttributes();
         }
 
         [Fact]
-        public void then_can_find_blob()
+        public async Task then_can_find_blob()
         {
-            var retrievedBytes = this.sut.Find(this.id);
+            var retrievedBytes = await this.sut.FindAsync(this.id);
 
             Assert.Equal(this.bytes, retrievedBytes);
         }
 
         [Fact]
-        public void then_can_delete_blob()
+        public async Task then_can_delete_blob()
         {
-            this.sut.Delete(this.id);
+            await this.sut.DeleteAsync(this.id);
 
-            var retrievedBytes = this.sut.Find(this.id);
+            var retrievedBytes = await this.sut.FindAsync(this.id);
 
             Assert.Null(retrievedBytes);
         }
 
         [Fact]
-        public void then_can_delete_multiple_times()
+        public async Task then_can_delete_multiple_times()
         {
-            this.sut.Delete(this.id);
-            this.sut.Delete(this.id);
+            await this.sut.DeleteAsync(this.id);
+            await this.sut.DeleteAsync(this.id);
 
-            var retrievedBytes = this.sut.Find(this.id);
+            var retrievedBytes = await this.sut.FindAsync(this.id);
 
             Assert.Null(retrievedBytes);
         }
 
         [Fact]
-        public void then_can_overwrite_blob()
+        public async Task then_can_overwrite_blob()
         {
             var newBytes = Encoding.UTF8.GetBytes(Guid.NewGuid().ToString() + Guid.NewGuid().ToString());
 
-            this.sut.Save(this.id, "text/plain", newBytes);
+            await this.sut.SaveAsync(this.id, "text/plain", newBytes);
 
-            var retrievedBytes = this.sut.Find(this.id);
+            var retrievedBytes = await this.sut.FindAsync(this.id);
 
             Assert.Equal(newBytes, retrievedBytes);
         }
@@ -196,22 +197,24 @@ namespace Infrastructure.Azure.IntegrationTests.Storage.BlobStorageFixture
             this.id = Guid.NewGuid().ToString() + '/' + Guid.NewGuid().ToString();
             this.bytes = Guid.NewGuid().ToByteArray();
 
-            this.sut.Save(this.id, "text/plain", this.bytes);
+            this.sut.SaveAsync(this.id, "text/plain", this.bytes).Wait();
         }
 
         [Fact]
         public void then_writes_blob()
         {
             var client = this.account.CreateCloudBlobClient();
-            var blobReference = client.GetBlobReference(this.rootContainerName + '/' + this.id);
+            var container = client.GetContainerReference(this.rootContainerName);
+
+            var blobReference = container.GetBlockBlobReference(this.id);
 
             blobReference.FetchAttributes();
         }
 
         [Fact]
-        public void then_can_find_blob()
+        public async Task then_can_find_blob()
         {
-            var retrievedBytes = this.sut.Find(this.id);
+            var retrievedBytes = await this.sut.FindAsync(this.id);
 
             Assert.Equal(this.bytes, retrievedBytes);
         }

@@ -14,7 +14,6 @@
 namespace Infrastructure.Azure.EventSourcing
 {
     using Microsoft.WindowsAzure.Storage.Table;
-    using Microsoft.WindowsAzure.StorageClient;
 
     public interface IEventRecord
     {

@@ -17,6 +17,7 @@ namespace Infrastructure.Sql.IntegrationTests
     using Infrastructure.Sql.BlobStorage;
     using Xunit;
     using System.Text;
+    using System.Threading.Tasks;
 
     public class SqlBlobStorageFixture : IDisposable
     {
@@ -47,26 +48,26 @@ namespace Infrastructure.Sql.IntegrationTests
         }
 
         [Fact]
-        public void when_saving_blob_then_can_read_it()
+        public async Task when_saving_blob_then_can_read_it()
         {
             var storage = new SqlBlobStorage(this.dbName);
 
-            storage.Save("test", "text/plain", Encoding.UTF8.GetBytes("Hello"));
+            await storage.SaveAsync("test", "text/plain", Encoding.UTF8.GetBytes("Hello"));
 
-            var data = Encoding.UTF8.GetString(storage.Find("test"));
+            var data = Encoding.UTF8.GetString(await storage.FindAsync("test"));
 
             Assert.Equal("Hello", data);
         }
 
         [Fact]
-        public void when_updating_existing_blob_then_can_read_changes()
+        public async Task when_updating_existing_blob_then_can_read_changes()
         {
             var storage = new SqlBlobStorage(this.dbName);
 
-            storage.Save("test", "text/plain", Encoding.UTF8.GetBytes("Hello"));
-            storage.Save("test", "text/plain", Encoding.UTF8.GetBytes("World"));
+            await storage.SaveAsync("test", "text/plain", Encoding.UTF8.GetBytes("Hello"));
+            await storage.SaveAsync("test", "text/plain", Encoding.UTF8.GetBytes("World"));
 
-            var data = Encoding.UTF8.GetString(storage.Find("test"));
+            var data = Encoding.UTF8.GetString(await storage.FindAsync("test"));
 
             Assert.Equal("World", data);
         }

@@ -15,6 +15,7 @@ namespace Infrastructure.Sql.BlobStorage
 {
     using System.Data.Entity;
     using System.IO;
+    using System.Threading.Tasks;
 
     public class BlobStorageDbContext : DbContext
     {
@@ -25,18 +26,16 @@ namespace Infrastructure.Sql.BlobStorage
         {
         }
 
-        public byte[] Find(string id)
+        public async Task<byte[]> FindAsync(string id)
         {
-            var blob = this.Set<BlobEntity>().Find(id);
-            if (blob == null)
-                return null;
+            var blob = await this.Set<BlobEntity>().FindAsync(id);
 
-            return blob.Blob;
+            return blob?.Blob;
         }
 
-        public void Save(string id, string contentType, byte[] blob)
+        public async Task SaveAsync(string id, string contentType, byte[] blob)
         {
-            var existing = this.Set<BlobEntity>().Find(id);
+            var existing = await this.Set<BlobEntity>().FindAsync(id);
             string blobString = "";
             if (contentType == "text/plain")
             {
@@ -52,8 +51,7 @@ namespace Infrastructure.Sql.BlobStorage
                 }
                 finally
                 {
-                    if (stream != null)
-                        stream.Dispose();
+                    stream?.Dispose();
                 }
             }
 
@@ -67,18 +65,18 @@ namespace Infrastructure.Sql.BlobStorage
                 this.Set<BlobEntity>().Add(new BlobEntity(id, contentType, blob, blobString));
             }
 
-            this.SaveChanges();
+            await this.SaveChangesAsync();
         }
 
-        public void Delete(string id)
+        public async Task DeleteAsync(string id)
         {
-            var blob = this.Set<BlobEntity>().Find(id);
+            var blob = await this.Set<BlobEntity>().FindAsync(id);
             if (blob == null)
                 return;
 
             this.Set<BlobEntity>().Remove(blob);
 
-            this.SaveChanges();
+            await this.SaveChangesAsync();
         }
 
         protected override void OnModelCreating(DbModelBuilder modelBuilder)

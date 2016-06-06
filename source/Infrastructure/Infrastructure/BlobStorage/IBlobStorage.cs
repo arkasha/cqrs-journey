@@ -13,12 +13,14 @@
 
 namespace Infrastructure.BlobStorage
 {
+    using System.Threading.Tasks;
+
     public interface IBlobStorage
     {
-        byte[] Find(string id);
+        Task<byte[]> FindAsync(string id);
         //T Find<T>(string id) where T : class;
-        void Save(string id, string contentType, byte[] blob);
+        Task SaveAsync(string id, string contentType, byte[] blob);
         //void Save<T>(string id, T instance) where T : class;
-        void Delete(string id);
+        Task DeleteAsync(string id);
     }
 }

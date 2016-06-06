@@ -3,11 +3,7 @@
     placeholders with your Azure access information -->
 <InfrastructureSettings xmlns="urn:microsoft-patterns-and-practices-cqrsjourney">
   <ServiceBus>
-    <ServiceUriScheme>sb</ServiceUriScheme>
-    <ServiceNamespace>[YOUR_NAMESPACE]</ServiceNamespace>
-    <ServicePath></ServicePath>
-    <TokenIssuer>owner</TokenIssuer>
-    <TokenAccessKey>[YOUR_TOKEN_ACCESS_KEY]</TokenAccessKey>
+    <ConnectionString>[YOUR SERVICE BUS CONNECTION STRING]</ConnectionString>
     <Topics>
       <Topic Path="conference/commands" DuplicateDetectionHistoryTimeWindow="00:30:00">
         <Subscription Name="sessionless" RequiresSession="false" SqlFilter="TypeName NOT IN ('AddSeats','RemoveSeats','MakeSeatReservation','CommitSeatReservation','CancelSeatReservation')" />

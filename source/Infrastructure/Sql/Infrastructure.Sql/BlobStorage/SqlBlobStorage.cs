@@ -13,6 +13,7 @@
 
 namespace Infrastructure.Sql.BlobStorage
 {
+    using System.Threading.Tasks;
     using Infrastructure.BlobStorage;
     using Infrastructure.Serialization;
 
@@ -29,27 +30,27 @@ namespace Infrastructure.Sql.BlobStorage
             this.nameOrConnectionString = nameOrConnectionString;
         }
 
-        public byte[] Find(string id)
+        public async Task<byte[]> FindAsync(string id)
         {
             using (var context = new BlobStorageDbContext(this.nameOrConnectionString))
             {
-                return context.Find(id);
+                return await context.FindAsync(id);
             }
         }
 
-        public void Save(string id, string contentType, byte[] blob)
+        public async Task SaveAsync(string id, string contentType, byte[] blob)
         {
             using (var context = new BlobStorageDbContext(this.nameOrConnectionString))
             {
-                context.Save(id, contentType, blob);
+                await context.SaveAsync(id, contentType, blob);
             }
         }
 
-        public void Delete(string id)
+        public async Task DeleteAsync(string id)
         {
             using (var context = new BlobStorageDbContext(this.nameOrConnectionString))
             {
-                context.Delete(id);
+                await context.DeleteAsync(id);
             }
         }
     }

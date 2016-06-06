@@ -17,6 +17,7 @@ namespace Infrastructure.Sql.IntegrationTests
     using System.Collections.Generic;
     using System.Data.Entity;
     using System.Linq;
+    using System.Threading.Tasks;
     using Infrastructure.Database;
     using Infrastructure.Messaging;
     using Infrastructure.Sql.Database;
@@ -43,7 +44,7 @@ namespace Infrastructure.Sql.IntegrationTests
         }
 
         [Fact]
-        public void WhenSavingAggregateRoot_ThenCanRetrieveIt()
+        public async Task WhenSavingAggregateRoot_ThenCanRetrieveIt()
         {
             var id = Guid.NewGuid();
 
@@ -51,12 +52,12 @@ namespace Infrastructure.Sql.IntegrationTests
             {
                 var aggregateRoot = new TestAggregateRoot(id) { Title = "test" };
 
-                context.Save(aggregateRoot);
+                await context.SaveAsync(aggregateRoot);
             }
 
             using (var context = new SqlDataContext<TestAggregateRoot>(() => new TestDbContext(), Mock.Of<IEventBus>()))
             {
-                var aggregateRoot = context.Find(id);
+                var aggregateRoot = await context.FindAsync(id);
 
                 Assert.NotNull(aggregateRoot);
                 Assert.Equal("test", aggregateRoot.Title);
@@ -64,34 +65,34 @@ namespace Infrastructure.Sql.IntegrationTests
         }
 
         [Fact]
-        public void WhenSavingEntityTwice_ThenCanReloadIt()
+        public async Task WhenSavingEntityTwice_ThenCanReloadIt()
         {
             var id = Guid.NewGuid();
 
             using (var context = new SqlDataContext<TestAggregateRoot>(() => new TestDbContext(), Mock.Of<IEventBus>()))
             {
                 var aggregateRoot = new TestAggregateRoot(id);
-                context.Save(aggregateRoot);
+                await context.SaveAsync(aggregateRoot);
             }
 
             using (var context = new SqlDataContext<TestAggregateRoot>(() => new TestDbContext(), Mock.Of<IEventBus>()))
             {
-                var aggregateRoot = context.Find(id);
+                var aggregateRoot = await context.FindAsync(id);
                 aggregateRoot.Title = "test";
 
-                context.Save(aggregateRoot);
+                await context.SaveAsync(aggregateRoot);
             }
 
             using (var context = new SqlDataContext<TestAggregateRoot>(() => new TestDbContext(), Mock.Of<IEventBus>()))
             {
-                var aggregateRoot = context.Find(id);
+                var aggregateRoot = await context.FindAsync(id);
 
                 Assert.Equal("test", aggregateRoot.Title);
             }
         }
 
         [Fact]
-        public void WhenEntityExposesEvent_ThenRepositoryPublishesIt()
+        public async Task WhenEntityExposesEvent_ThenRepositoryPublishesIt()
         {
             var busMock = new Mock<IEventBus>();
             var events = new List<IEvent>();
@@ -106,7 +107,7 @@ namespace Infrastructure.Sql.IntegrationTests
             {
                 var aggregate = new TestEventPublishingAggregateRoot(Guid.NewGuid());
                 aggregate.AddEvent(@event);
-                context.Save(aggregate);
+                await context.SaveAsync(aggregate);
             }
 
             Assert.Equal(1, events.Count);

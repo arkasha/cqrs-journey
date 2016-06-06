@@ -15,6 +15,7 @@ namespace Infrastructure.Sql.Database
 {
     using System;
     using System.Data.Entity;
+    using System.Threading.Tasks;
     using Infrastructure.Messaging;
     using Infrastructure.Database;
 
@@ -29,12 +30,12 @@ namespace Infrastructure.Sql.Database
             this.context = contextFactory.Invoke();
         }
 
-        public T Find(Guid id)
+        public async Task<T> FindAsync(Guid id)
         {
-            return this.context.Set<T>().Find(id);
+            return await this.context.Set<T>().FindAsync(id);
         }
 
-        public void Save(T aggregateRoot)
+        public async Task SaveAsync(T aggregateRoot)
         {
             var entry = this.context.Entry(aggregateRoot);
 
@@ -42,7 +43,7 @@ namespace Infrastructure.Sql.Database
                 this.context.Set<T>().Add(aggregateRoot);
 
             // Can't have transactions across storage and message bus.
-            this.context.SaveChanges();
+            await this.context.SaveChangesAsync();
 
             var eventPublisher = aggregateRoot as IEventPublisher;
             if (eventPublisher != null)

@@ -14,6 +14,7 @@
 namespace Infrastructure.Database
 {
     using System;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// Represents a temporary data context to load and save an entity that implements <see cref="IAggregateRoot"/>.
@@ -22,8 +23,8 @@ namespace Infrastructure.Database
     public interface IDataContext<T> : IDisposable
         where T : IAggregateRoot
     {
-        T Find(Guid id);
+        Task<T> FindAsync(Guid id);
 
-        void Save(T aggregate);
+        Task SaveAsync(T aggregate);
     }
 }

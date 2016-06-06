@@ -15,10 +15,14 @@ namespace Infrastructure.Azure.BlobStorage
 {
     using System;
     using System.Diagnostics;
+    using System.Net;
+    using System.Threading.Tasks;
     using Infrastructure.BlobStorage;
     using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
     using Microsoft.WindowsAzure;
-    using Microsoft.WindowsAzure.StorageClient;
+    using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.Blob;
+    using Microsoft.WindowsAzure.Storage.RetryPolicies;
 
     public class CloudBlobStorage : IBlobStorage
     {
@@ -34,7 +38,7 @@ namespace Infrastructure.Azure.BlobStorage
             this.rootContainerName = rootContainerName;
 
             this.blobClient = account.CreateCloudBlobClient();
-            this.blobClient.RetryPolicy = RetryPolicies.NoRetry();
+            this.blobClient.DefaultRequestOptions.RetryPolicy = new NoRetry();
 
             this.readRetryPolicy = new RetryPolicy<StorageTransientErrorDetectionStrategy>(new Incremental(1, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(1)));
             this.readRetryPolicy.Retrying += (s, e) => Trace.TraceWarning("An error occurred in attempt number {1} to read from blob storage: {0}", e.LastException.Message, e.CurrentRetryCount);
@@ -42,23 +46,26 @@ namespace Infrastructure.Azure.BlobStorage
             this.writeRetryPolicy.Retrying += (s, e) => Trace.TraceWarning("An error occurred in attempt number {1} to write to blob storage: {0}", e.LastException.Message, e.CurrentRetryCount);
 
             var containerReference = this.blobClient.GetContainerReference(this.rootContainerName);
-            this.writeRetryPolicy.ExecuteAction(() => containerReference.CreateIfNotExist());
+            this.writeRetryPolicy.ExecuteAction(() => containerReference.CreateIfNotExists());
         }
 
-        public byte[] Find(string id)
+        public async Task<byte[]> FindAsync(string id)
         {
             var containerReference = this.blobClient.GetContainerReference(this.rootContainerName);
             var blobReference = containerReference.GetBlobReference(id);
-
-            return this.readRetryPolicy.ExecuteAction(() =>
+            
+            return await this.readRetryPolicy.ExecuteAsync(async () =>
                 {
                     try
                     {
-                        return blobReference.DownloadByteArray();
+                        await blobReference.FetchAttributesAsync();
+                        var buffer = new byte[blobReference.Properties.Length];
+                        await blobReference.DownloadToByteArrayAsync(buffer, 0);
+                        return buffer;
                     }
-                    catch (StorageClientException e)
+                    catch (StorageException e)
                     {
-                        if (e.ErrorCode == StorageErrorCode.ResourceNotFound || e.ErrorCode == StorageErrorCode.BlobNotFound || e.ErrorCode == StorageErrorCode.ContainerNotFound)
+                        if (e.RequestInformation.HttpStatusCode == (int)HttpStatusCode.NotFound)
                         {
                             return null;
                         }
@@ -68,34 +75,35 @@ namespace Infrastructure.Azure.BlobStorage
                 });
         }
 
-        public void Save(string id, string contentType, byte[] blob)
+        public async Task SaveAsync(string id, string contentType, byte[] blob)
         {
             var client = this.account.CreateCloudBlobClient();
             var containerReference = client.GetContainerReference(this.rootContainerName);
 
-            var blobReference = containerReference.GetBlobReference(id);
+            CloudBlockBlob blobReference = containerReference.GetBlockBlobReference(id);
 
-            this.writeRetryPolicy.ExecuteAction(() =>
+            await this.writeRetryPolicy.ExecuteAsync(async () =>
                 {
-                    blobReference.UploadByteArray(blob);
+                    await blobReference.UploadFromByteArrayAsync(blob, 0, blob.Length);
+
                 });
         }
 
-        public void Delete(string id)
+        public async Task DeleteAsync(string id)
         {
             var client = this.account.CreateCloudBlobClient();
             var containerReference = client.GetContainerReference(this.rootContainerName);
             var blobReference = containerReference.GetBlobReference(id);
 
-            this.writeRetryPolicy.ExecuteAction(() =>
+            await this.writeRetryPolicy.ExecuteAsync(async () =>
                 {
                     try
                     {
-                        blobReference.DeleteIfExists();
+                       await blobReference.DeleteIfExistsAsync();
                     }
-                    catch (StorageClientException e)
+                    catch (StorageException e)
                     {
-                        if (e.ErrorCode != StorageErrorCode.ResourceNotFound)
+                        if (e.RequestInformation.HttpStatusCode != (int)HttpStatusCode.NotFound)
                         {
                             throw;
                         }
