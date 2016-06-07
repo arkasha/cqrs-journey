@@ -14,6 +14,7 @@
 namespace Infrastructure.Sql.Messaging
 {
     using System.Collections.Generic;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// Abstracts the behavior of sending a message.
@@ -23,11 +24,11 @@ namespace Infrastructure.Sql.Messaging
         /// <summary>
         /// Sends the specified message.
         /// </summary>
-        void Send(Message message);
+        Task SendAsync(Message message);
 
         /// <summary>
         /// Sends a batch of messages.
         /// </summary>
-        void Send(IEnumerable<Message> messages);
+        Task SendAsync(IEnumerable<Message> messages);
     }
 }

@@ -75,61 +75,28 @@ namespace Infrastructure.Azure.Messaging
         /// </summary>
         public event EventHandler Retrying;
 
-        /// <summary>
-        /// Asynchronously sends the specified message.
-        /// </summary>
-        public void SendAsync(Func<BrokeredMessage> messageFactory)
-        {
-            // TODO: SendAsync is not currently being used by the app or infrastructure.
-            // Consider removing or have a callback notifying the result.
-            // Always send async.
-            this.SendAsync(messageFactory, () => { }, ex => { });
-        }
-
-        public void SendAsync(IEnumerable<Func<BrokeredMessage>> messageFactories)
+        public async Task SendAsync(IEnumerable<Func<BrokeredMessage>> messageFactories)
         {
             // TODO: batch/transactional sending?
             foreach (var messageFactory in messageFactories)
             {
-                this.SendAsync(messageFactory);
+                await this.SendAsync(messageFactory);
             }
         }
 
-        public void SendAsync(Func<BrokeredMessage> messageFactory, Action successCallback, Action<Exception> exceptionCallback)
+        /// <summary>
+        /// Asynchronously sends the specified message.
+        /// </summary>
+        public async Task SendAsync(Func<BrokeredMessage> messageFactory)
         {
-            this.retryPolicy.ExecuteAsync(() => this.DoSendMessageAsync(messageFactory())).ContinueWith(t =>
+            try
             {
-                if (t.IsFaulted)
-                {
-                    var ex = t.Exception.InnerException;
-                    Trace.TraceError("An unrecoverable error occurred while trying to send a message:\r\n{0}", ex);
-                    exceptionCallback(ex);
-                }
-                else if (!t.IsCanceled)
-                {
-                    successCallback();
-                }
-            });
-        }
-
-        public void Send(Func<BrokeredMessage> messageFactory)
-        {
-            var resetEvent = new ManualResetEvent(false);
-            Exception exception = null;
-
-            this.SendAsync(
-                messageFactory,
-                () => resetEvent.Set(),
-                ex =>
-                {
-                    exception = ex;
-                    resetEvent.Set();
-                });
-
-            resetEvent.WaitOne();
-            if (exception != null)
+                await this.retryPolicy.ExecuteAsync(() => this.DoSendMessageAsync(messageFactory()));
+            }
+            catch (AggregateException ex)
             {
-                throw exception;
+                Trace.TraceError("An unrecoverable error occurred while trying to send a message:\r\n{0}", ex.Flatten().InnerException);
+                throw;
             }
         }
 

@@ -104,35 +104,14 @@ namespace Infrastructure.Azure.Tests.Mocks
         public readonly ConcurrentBag<Action> AsyncSuccessCallbacks = new ConcurrentBag<Action>();
 
         public bool ShouldWaitForCallback { get; set; }
-
-        void IMessageSender.Send(Func<BrokeredMessage> messageFactory)
+        
+        async Task IMessageSender.SendAsync(Func<BrokeredMessage> messageFactory)
         {
-            this.Sent.Add(messageFactory.Invoke());
-            this.SendSignal.Set();
-        }
-
-        void IMessageSender.SendAsync(Func<BrokeredMessage> messageFactory)
-        {
-            throw new NotImplementedException();
-        }
-
-        void IMessageSender.SendAsync(Func<BrokeredMessage> messageFactory, Action successCallback, Action<Exception> exceptionCallback)
-        {
-            Task.Factory.StartNew(
-                () =>
-                {
-                    this.Sent.Add(messageFactory.Invoke());
-                    this.SendSignal.Set();
-                    if (!this.ShouldWaitForCallback)
-                    {
-                        successCallback();
-                    }
-                    else
-                    {
-                        this.AsyncSuccessCallbacks.Add(successCallback);
-                    }
-                },
-                TaskCreationOptions.AttachedToParent);
+            await Task.Run(() =>
+            {
+                this.Sent.Add(messageFactory.Invoke());
+                this.SendSignal.Set();
+            });
         }
 
         public event EventHandler Retrying;

@@ -49,7 +49,7 @@ namespace Infrastructure.Sql.IntegrationTests.Messaging.MessageSenderFixture
             var messageBody = "Message-" + Guid.NewGuid().ToString();
             var message = new Message(messageBody);
 
-            this.sender.Send(message);
+            this.sender.SendAsync(message);
 
             //using (var context = this.contextFactory())
             //{

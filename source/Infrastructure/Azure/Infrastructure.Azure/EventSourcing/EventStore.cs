@@ -46,8 +46,8 @@ namespace Infrastructure.Azure.EventSourcing
         private readonly CloudStorageAccount account;
         private readonly string tableName;
         private readonly CloudTableClient tableClient;
-        private readonly Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling.RetryPolicy pendingEventsQueueRetryPolicy;
-        private readonly Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling.RetryPolicy eventStoreRetryPolicy;
+        private readonly RetryPolicy pendingEventsQueueRetryPolicy;
+        private readonly RetryPolicy eventStoreRetryPolicy;
 
         static EventStore()
         {
@@ -57,9 +57,9 @@ namespace Infrastructure.Azure.EventSourcing
 
         public EventStore(CloudStorageAccount account, string tableName)
         {
-            if (account == null) throw new ArgumentNullException("account");
-            if (tableName == null) throw new ArgumentNullException("tableName");
-            if (string.IsNullOrWhiteSpace(tableName)) throw new ArgumentException("tableName");
+            if (account == null) throw new ArgumentNullException(nameof(account));
+            if (tableName == null) throw new ArgumentNullException(nameof(tableName));
+            if (string.IsNullOrWhiteSpace(tableName)) throw new ArgumentException(nameof(tableName));
 
             this.account = account;
             this.tableName = tableName;
@@ -96,16 +96,27 @@ namespace Infrastructure.Azure.EventSourcing
         /// </summary>
         public event EventHandler Retrying;
 
-        public async Task<IEnumerable<EventData>> Load(string partitionKey, int version)
+        public async Task<IEnumerable<EventData>> LoadAsync(string partitionKey, int version)
         {
             var minRowKey = version.ToString("D10");
             var query = this.GetEntitiesQuery(partitionKey, minRowKey, RowKeyVersionUpperLimit);
-            // TODO: use async APIs, continuation tokens
-            var all = this.eventStoreRetryPolicy.ExecuteAction(() => query.Execute());
-            return all.Select(x => Mapper.Map(x, new EventData { Version = int.Parse(x.RowKey) }));
+            var results = new List<EventData>();
+
+            TableContinuationToken continuationToken = null;
+
+            do
+            {
+                var partial = await this.eventStoreRetryPolicy.ExecuteAsync(() => query.ExecuteSegmentedAsync(continuationToken));
+
+                results.AddRange(partial.Select(x => Mapper.Map(x, new EventData { Version = int.Parse(x.RowKey) })));
+
+                continuationToken = partial.ContinuationToken;
+            } while (continuationToken != null);
+
+            return results;
         }
 
-        public async Task Save(string partitionKey, IEnumerable<EventData> events)
+        public async Task SaveAsync(string partitionKey, IEnumerable<EventData> events)
         {
             var table = this.tableClient.GetTableReference(this.tableName);
 
@@ -151,26 +162,21 @@ namespace Infrastructure.Azure.EventSourcing
         /// Gets the pending events for publishing asynchronously using delegate continuations.
         /// </summary>
         /// <param name="partitionKey">The partition key to get events from.</param>
-        /// <param name="successCallback">The callback that will be called if the data is successfully retrieved. 
-        /// The first argument of the callback is the list of pending events.
-        /// The second argument is true if there are more records that were not retrieved.</param>
-        /// <param name="exceptionCallback">The callback used if there is an exception that does not allow to continue.</param>
-        public async Task GetPendingAsync(string partitionKey, Action<IEnumerable<IEventRecord>, TableContinuationToken> successCallback, Action<Exception> exceptionCallback)
+        public async Task<IEnumerable<IEventRecord>> GetPendingAsync(string partitionKey)
         {
             var query = this.GetEntitiesQuery(partitionKey, UnpublishedRowKeyPrefix, UnpublishedRowKeyPrefixUpperLimit);
-            await this.pendingEventsQueueRetryPolicy.ExecuteAsync(() => query.ExecuteSegmentedAsync(null)).ContinueWith(t =>
+
+            var continuationToken = (TableContinuationToken)null;
+            var eventRecords = new List<IEventRecord>();
+
+            do
             {
-                if (t.IsFaulted)
-                {
-                    exceptionCallback(t.Exception.InnerException);
-                }
-                else if (t.IsCompleted)
-                {
-                    var rs = t.Result;
-                    var all = rs.Results.ToList();
-                    successCallback(rs.Results, rs.ContinuationToken);
-                }
-            });
+                var result = await this.pendingEventsQueueRetryPolicy.ExecuteAsync(() => query.ExecuteSegmentedAsync(continuationToken));
+                eventRecords.AddRange(result);
+                continuationToken = result.ContinuationToken;
+            } while (continuationToken != null);
+
+            return eventRecords;
         }
 
         /// <summary>
@@ -178,33 +184,26 @@ namespace Infrastructure.Azure.EventSourcing
         /// </summary>
         /// <param name="partitionKey">The partition key of the event.</param>
         /// <param name="rowKey">The partition key of the event.</param>
-        /// <param name="successCallback">The callback that will be called if the data is successfully retrieved.
-        /// The argument specifies if the row was deleted. If false, it means that the row did not exist.
-        /// </param>
-        /// <param name="exceptionCallback">The callback used if there is an exception that does not allow to continue.</param>
-        public async Task DeletePendingAsync(string partitionKey, string rowKey, Action<bool> successCallback, Action<Exception> exceptionCallback)
+        public async Task<bool> DeletePendingAsync(string partitionKey, string rowKey)
         {
             var table = this.tableClient.GetTableReference(this.tableName);
             var item = new EventTableEntity { PartitionKey = partitionKey, RowKey = rowKey, ETag = "*"};
 
             var operation = TableOperation.Delete(item);
 
-            await this.pendingEventsQueueRetryPolicy.ExecuteAsync(() => table.ExecuteAsync(operation)).ContinueWith(t =>
+            try
             {
-                if (t.IsFaulted)
-                {
-                    var inner = t.Exception?.InnerException as StorageException;
+                var r = await this.pendingEventsQueueRetryPolicy.ExecuteAsync(() => table.ExecuteAsync(operation));
 
-                    if (inner != null && inner.RequestInformation.HttpStatusCode == (int)HttpStatusCode.NotFound)
-                        successCallback(true);
-                    else
-                        exceptionCallback(t.Exception?.InnerException);
-                }
-                else if (!t.IsCanceled)
-                {
-                    successCallback(t.Result.HttpStatusCode == (int)HttpStatusCode.NoContent);
-                }
-            });
+                return r.HttpStatusCode == (int)HttpStatusCode.NoContent;
+            }
+            catch (StorageException ex)
+            {
+                if (ex.RequestInformation.HttpStatusCode == (int)HttpStatusCode.NotFound)
+                    return true;
+
+                throw;
+            }
         }
 
         /// <summary>

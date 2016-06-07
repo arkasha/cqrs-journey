@@ -51,16 +51,17 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
                 && x.Namespace == "Namespace"
                 && x.FullName == "Namespace.TestEventType");
             this.queue = new Mock<IPendingEventsQueue>();
-            this.queue.Setup(x => x.GetPendingAsync(this.partitionKey, It.IsAny<Action<IEnumerable<IEventRecord>, TableContinuationToken>>(), It.IsAny<Action<Exception>>()))
-                .Callback<string, Action<IEnumerable<IEventRecord>, TableContinuationToken>, Action<Exception>>((key, success, error) => success(new[] { this.testEvent }, null));
+            this.queue.Setup(x => x.GetPendingAsync(this.partitionKey))
+                .Returns(Task.FromResult((new[] { this.testEvent }).AsEnumerable()));
+
             this.sender = new MessageSenderMock();
             var sut = new EventStoreBusPublisher(this.sender, this.queue.Object, new MockEventStoreBusPublisherInstrumentation());
             var cancellationTokenSource = new CancellationTokenSource();
             sut.Start(cancellationTokenSource.Token);
 
-            sut.SendAsync(this.partitionKey, 0);
+            sut.Send(this.partitionKey, 0);
 
-            Assert.True(this.sender.SendSignal.WaitOne(3000));
+            Assert.True(this.sender.SendSignal.WaitOne(int.MaxValue));
             cancellationTokenSource.Cancel();
         }
 
@@ -87,7 +88,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
         [Fact]
         public void then_deletes_message_after_publishing()
         {
-            this.queue.Verify(q => q.DeletePendingAsync(this.partitionKey, this.testEvent.RowKey, It.IsAny<Action<bool>>(), It.IsAny<Action<Exception>>()));
+            this.queue.Verify(q => q.DeletePendingAsync(this.partitionKey, this.testEvent.RowKey));
         }
     }
 
@@ -106,9 +107,9 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
 
             this.pendingKeys = new[] { "Key1", "Key2", "Key3" };
             this.queue = new Mock<IPendingEventsQueue>();
-            this.queue.Setup(x => x.GetPendingAsync(It.IsAny<string>(), It.IsAny<Action<IEnumerable<IEventRecord>, TableContinuationToken>>(), It.IsAny<Action<Exception>>()))
+            this.queue.Setup(x => x.GetPendingAsync(It.IsAny<string>()))
                 .Callback<string, Action<IEnumerable<IEventRecord>, TableContinuationToken>, Action<Exception>>(
-                (key, success, error) => 
+                (key, success, error) =>
                     success(new[]
                            {
                                Mock.Of<IEventRecord>(
@@ -163,7 +164,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
         {
             for (int i = 0; i < this.pendingKeys.Length; i++)
             {
-                this.queue.Verify(q => q.DeletePendingAsync(this.pendingKeys[i], this.rowKey, It.IsAny<Action<bool>>(), It.IsAny<Action<Exception>>()));
+                this.queue.Verify(q => q.DeletePendingAsync(this.pendingKeys[i], this.rowKey));
             }
         }
     }
@@ -185,7 +186,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
 
             this.partitionKeys = Enumerable.Range(0, 200).Select(i => "Key" + i).ToArray();
             this.queue = new Mock<IPendingEventsQueue>();
-            this.queue.Setup(x => x.GetPendingAsync(It.IsAny<string>(), It.IsAny<Action<IEnumerable<IEventRecord>, TableContinuationToken>>(), It.IsAny<Action<Exception>>()))
+            this.queue.Setup(x => x.GetPendingAsync(It.IsAny<string>()))
                 .Callback<string, Action<IEnumerable<IEventRecord>, TableContinuationToken>, Action<Exception>>(
                 (key, success, error) =>
                     success(new[]
@@ -205,9 +206,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
                 .Setup(x =>
                     x.DeletePendingAsync(
                         It.IsAny<string>(),
-                        It.IsAny<string>(),
-                        It.IsAny<Action<bool>>(),
-                        It.IsAny<Action<Exception>>()))
+                        It.IsAny<string>()))
                 .Callback<string, string, Action<bool>, Action<Exception>>((p, r, s, e) => s(true));
             this.sender = new MessageSenderMock();
             this.sut = new EventStoreBusPublisher(this.sender, this.queue.Object, new MockEventStoreBusPublisherInstrumentation());
@@ -220,7 +219,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
         {
             for (int i = 0; i < this.partitionKeys.Length; i++)
             {
-                this.sut.SendAsync(this.partitionKeys[i], 0);
+                this.sut.Send(this.partitionKeys[i], 0);
             }
 
             var timeout = TimeSpan.FromSeconds(20);
@@ -244,7 +243,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.EventStoreBusPublisherFixture
             this.sender.ShouldWaitForCallback = true;
             for (int i = 0; i < this.partitionKeys.Length; i++)
             {
-                this.sut.SendAsync(this.partitionKeys[i], 0);
+                this.sut.Send(this.partitionKeys[i], 0);
             }
 
             Thread.Sleep(1000);

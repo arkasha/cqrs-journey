@@ -19,6 +19,7 @@ namespace Infrastructure.Sql.Messaging.Implementation
     using System.Data.Common;
     using System.Data.Entity.Infrastructure;
     using System.Data.SqlClient;
+    using System.Threading.Tasks;
     using System.Transactions;
 
     public class MessageSender : IMessageSender
@@ -37,20 +38,20 @@ namespace Infrastructure.Sql.Messaging.Implementation
         /// <summary>
         /// Sends the specified message.
         /// </summary>
-        public void Send(Message message)
+        public async Task SendAsync(Message message)
         {
             using (var connection = this.connectionFactory.CreateConnection(this.name))
             {
                 connection.Open();
 
-                this.InsertMessage(message, connection);
+                await this.InsertMessageAsync(message, connection);
             }
         }
 
         /// <summary>
         /// Sends a batch of messages.
         /// </summary>
-        public void Send(IEnumerable<Message> messages)
+        public async Task SendAsync(IEnumerable<Message> messages)
         {
             using (var scope = new TransactionScope(TransactionScopeOption.Required))
             {
@@ -60,7 +61,7 @@ namespace Infrastructure.Sql.Messaging.Implementation
 
                     foreach (var message in messages)
                     {
-                        this.InsertMessage(message, connection);
+                        await this.InsertMessageAsync(message, connection);
                     }
                 }
 
@@ -69,7 +70,7 @@ namespace Infrastructure.Sql.Messaging.Implementation
         }
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2100:Review SQL queries for security vulnerabilities", Justification = "Does not contain user input.")]
-        private void InsertMessage(Message message, DbConnection connection)
+        private async Task InsertMessageAsync(Message message, DbConnection connection)
         {
             using (var command = (SqlCommand)connection.CreateCommand())
             {
@@ -80,7 +81,7 @@ namespace Infrastructure.Sql.Messaging.Implementation
                 command.Parameters.Add("@DeliveryDate", SqlDbType.DateTime).Value = message.DeliveryDate.HasValue ? (object)message.DeliveryDate.Value : DBNull.Value;
                 command.Parameters.Add("@CorrelationId", SqlDbType.NVarChar).Value = (object)message.CorrelationId ?? DBNull.Value;
 
-                command.ExecuteNonQuery();
+                await command.ExecuteNonQueryAsync();
             }
         }
     }

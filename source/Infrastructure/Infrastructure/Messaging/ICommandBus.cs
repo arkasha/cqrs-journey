@@ -14,10 +14,11 @@
 namespace Infrastructure.Messaging
 {
     using System.Collections.Generic;
+    using System.Threading.Tasks;
 
     public interface ICommandBus
     {
-        void Send(Envelope<ICommand> command);
-        void Send(IEnumerable<Envelope<ICommand>> commands);
+        Task SendAsync(Envelope<ICommand> command);
+        Task SendAsync(IEnumerable<Envelope<ICommand>> commands);
     }
 }

@@ -15,6 +15,7 @@ namespace Infrastructure.Azure.Tests.Messaging
 {
     using System;
     using System.Linq;
+    using System.Threading.Tasks;
     using Infrastructure.Azure.Messaging;
     using Infrastructure.Azure.Tests.Mocks;
     using Infrastructure.Messaging;
@@ -25,19 +26,19 @@ namespace Infrastructure.Azure.Tests.Messaging
     public class CommandBusFixture
     {
         [Fact]
-        public void when_sending_then_sets_command_id_as_messageid()
+        public async Task when_sending_then_sets_command_id_as_messageid()
         {
             var sender = new MessageSenderMock();
             var sut = new CommandBus(sender, Mock.Of<IMetadataProvider>(), new JsonTextSerializer());
 
             var command = new FooCommand { Id = Guid.NewGuid() };
-            sut.Send(command);
+            await sut.SendAsync(command);
 
             Assert.Equal(command.Id.ToString(), sender.Sent.Single().MessageId);
         }
 
         [Fact]
-        public void when_specifying_time_to_live_then_sets_in_message()
+        public async Task when_specifying_time_to_live_then_sets_in_message()
         {
             var sender = new MessageSenderMock();
             var sut = new CommandBus(sender, Mock.Of<IMetadataProvider>(), new JsonTextSerializer());
@@ -46,13 +47,13 @@ namespace Infrastructure.Azure.Tests.Messaging
             {
                 TimeToLive = TimeSpan.FromMinutes(15)
             };
-            sut.Send(command);
+            await sut.SendAsync(command);
 
             Assert.InRange(sender.Sent.Single().TimeToLive, TimeSpan.FromMinutes(14.9), TimeSpan.FromMinutes(15.1));
         }
 
         [Fact]
-        public void when_specifying_delay_then_sets_in_message()
+        public async Task when_specifying_delay_then_sets_in_message()
         {
             var sender = new MessageSenderMock();
             var sut = new CommandBus(sender, Mock.Of<IMetadataProvider>(), new JsonTextSerializer());
@@ -61,7 +62,7 @@ namespace Infrastructure.Azure.Tests.Messaging
             {
                 Delay = TimeSpan.FromMinutes(15)
             };
-            sut.Send(command);
+            await sut.SendAsync(command);
 
             Assert.InRange(sender.Sent.Single().ScheduledEnqueueTimeUtc, DateTime.UtcNow.AddMinutes(14.9), DateTime.UtcNow.AddMinutes(15.1));
         }

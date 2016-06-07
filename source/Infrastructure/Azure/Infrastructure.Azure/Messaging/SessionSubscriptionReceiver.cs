@@ -146,7 +146,7 @@ namespace Infrastructure.Azure.Messaging
                 {
                     this.MessageHandler = messageHandler;
                     this.cancellationSource = new CancellationTokenSource();
-                    Task.Factory.StartNew(() => this.AcceptSession(this.cancellationSource.Token), this.cancellationSource.Token);
+                    Task.Factory.StartNew(() => this.AcceptSessionAsync(this.cancellationSource.Token), this.cancellationSource.Token);
                     this.dynamicThrottling.Start(this.cancellationSource.Token);
                 }
             }
@@ -201,51 +201,42 @@ namespace Infrastructure.Azure.Messaging
             this.Dispose(false);
         }
 
-        private void AcceptSession(CancellationToken cancellationToken)
+        private async Task AcceptSessionAsync(CancellationToken cancellationToken)
         {
             this.dynamicThrottling.WaitUntilAllowedParallelism(cancellationToken);
 
             if (!cancellationToken.IsCancellationRequested)
             {
-                // Initialize a custom action acting as a callback whenever a non-transient exception occurs while accepting a session.
-                Action<Exception> recoverAcceptSession = ex =>
+
+                try
+                {
+                    var session = await this.receiveRetryPolicy.ExecuteAsync(() => this.client.AcceptMessageSessionAsync(AcceptSessionLongPollingTimeout), cancellationToken);
+                    if (session != null)
+                    {
+                        this.instrumentation.SessionStarted();
+                        this.dynamicThrottling.NotifyWorkStarted();
+                        // starts a new task to process new sessions in parallel when enough threads are available
+                        await Task.Factory.StartNew(async () => await this.AcceptSessionAsync(cancellationToken), cancellationToken);
+                        this.ReceiveMessagesAndCloseSession(session, cancellationToken);
+                    }
+                    else
+                    {
+                        await this.AcceptSessionAsync(cancellationToken);
+                    }
+                }
+                catch (AggregateException ae)
                 {
                     // Just log an exception. Do not allow an unhandled exception to terminate the message receive loop abnormally.
-                    Trace.TraceError("An unrecoverable error occurred while trying to accept a session in subscription {1}:\r\n{0}", ex, this.subscription);
+                    Trace.TraceError("An unrecoverable error occurred while trying to accept a session in subscription {1}:\r\n{0}", ae.InnerException, this.subscription);
                     this.dynamicThrottling.Penalize();
 
                     if (!cancellationToken.IsCancellationRequested)
                     {
                         // Continue accepting new sessions until told to stop regardless of any exceptions.
-                        TaskEx.Delay(10000).ContinueWith(t => this.AcceptSession(cancellationToken));
+                        await Task.Delay(10000, cancellationToken);
                     }
-                };
-                this.receiveRetryPolicy.ExecuteAsync(
-                    () => this.client.AcceptMessageSessionAsync(AcceptSessionLongPollingTimeout), cancellationToken).ContinueWith(
-                        task =>
-                        {
-                            if (task.IsFaulted)
-                            {
-                                recoverAcceptSession(task.Exception.InnerException);
-                            }
-                            else
-                            {
-                                var session = task.Result;
-                                if (session != null)
-                                {
-                                    this.instrumentation.SessionStarted();
-                                    this.dynamicThrottling.NotifyWorkStarted();
-                                    // starts a new task to process new sessions in parallel when enough threads are available
-                                    Task.Factory.StartNew(() => this.AcceptSession(cancellationToken), cancellationToken);
-                                    this.ReceiveMessagesAndCloseSession(session, cancellationToken);
-                                }
-                                else
-                                {
-                                    this.AcceptSession(cancellationToken);
-                                }
-                            }
-                            
-                        }, cancellationToken);
+                    throw;
+                }
             }
         }
 
@@ -307,7 +298,7 @@ namespace Infrastructure.Azure.Messaging
                 else
                 {
                     // Allow some time for releasing the messages before closing. Also, continue in a non I/O completion thread in order to block.
-                    TaskEx.Delay(200).ContinueWith(t => doClose());
+                    Task.Delay(200).ContinueWith(t => doClose());
                 }
             };
 
@@ -337,7 +328,7 @@ namespace Infrastructure.Azure.Messaging
 
                             unreleasedMessages.AddCount();
 
-                            Task.Factory.StartNew(() =>
+                            Task.Factory.StartNew(async () =>
                             {
                                 var releaseAction = MessageReleaseAction.AbandonMessage;
 
@@ -382,12 +373,12 @@ namespace Infrastructure.Azure.Messaging
                                     // Ensure that any resources allocated by a BrokeredMessage instance are released.
                                     if (this.requiresSequentialProcessing)
                                     {
-                                        this.ReleaseMessage(msg, releaseAction, () => { receiveNext(); }, () => { closeSession(false); }, unreleasedMessages, processingElapsedMilliseconds, schedulingElapsedMilliseconds, roundtripStopwatch);
+                                        await this.ReleaseMessageAsync(msg, releaseAction, () => { receiveNext(); }, () => { closeSession(false); }, unreleasedMessages, processingElapsedMilliseconds, schedulingElapsedMilliseconds, roundtripStopwatch);
                                     }
                                     else
                                     {
                                         // Receives next without waiting for the message to be released.
-                                        this.ReleaseMessage(msg, releaseAction, () => { }, () => { this.dynamicThrottling.Penalize(); }, unreleasedMessages, processingElapsedMilliseconds, schedulingElapsedMilliseconds, roundtripStopwatch);
+                                        await this.ReleaseMessageAsync(msg, releaseAction, () => { }, () => { this.dynamicThrottling.Penalize(); }, unreleasedMessages, processingElapsedMilliseconds, schedulingElapsedMilliseconds, roundtripStopwatch);
                                         receiveNext.Invoke();
                                     }
                                 }
@@ -445,71 +436,38 @@ namespace Infrastructure.Azure.Messaging
             receiveNext.Invoke();
         }
 
-        private void ReleaseMessage(BrokeredMessage msg, MessageReleaseAction releaseAction, Action completeReceive, Action onReleaseError, CountdownEvent countdown, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        private async Task ReleaseMessageAsync(BrokeredMessage msg, MessageReleaseAction releaseAction, Action completeReceive, Action onReleaseError, CountdownEvent countdown, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
         {
+            bool operationSucceeded = false;
+
             switch (releaseAction.Kind)
             {
                 case MessageReleaseActionKind.Complete:
-                    msg.SafeCompleteAsync(
-                        this.subscription,
-                        operationSucceeded =>
-                        {
-                            msg.Dispose();
-                            this.OnMessageCompleted(operationSucceeded, countdown);
-                            if (operationSucceeded)
-                            {
-                                completeReceive();
-                            }
-                            else
-                            {
-                                onReleaseError();
-                            }
-                        },
-                        processingElapsedMilliseconds,
-                        schedulingElapsedMilliseconds,
-                        roundtripStopwatch);
+                    operationSucceeded = await msg.SafeCompleteAsync(
+                        this.subscription);
                     break;
                 case MessageReleaseActionKind.Abandon:
-                    this.dynamicThrottling.Penalize();
-                    msg.SafeAbandonAsync(
-                        this.subscription,
-                        operationSucceeded =>
-                        {
-                            msg.Dispose();
-                            this.OnMessageCompleted(false, countdown);
-
-                            onReleaseError();
-                        },
-                        processingElapsedMilliseconds,
-                        schedulingElapsedMilliseconds,
-                        roundtripStopwatch);
+                    operationSucceeded = await msg.SafeAbandonAsync(
+                        this.subscription);
                     break;
                 case MessageReleaseActionKind.DeadLetter:
-                    this.dynamicThrottling.Penalize();
-                    msg.SafeDeadLetterAsync(
-                        this.subscription,
-                        releaseAction.DeadLetterReason,
-                        releaseAction.DeadLetterDescription,
-                        operationSucceeded =>
-                        {
-                            msg.Dispose();
-                            this.OnMessageCompleted(false, countdown);
-
-                            if (operationSucceeded)
-                            {
-                                completeReceive();
-                            }
-                            else
-                            {
-                                onReleaseError();
-                            }
-                        },
-                        processingElapsedMilliseconds,
-                        schedulingElapsedMilliseconds,
-                        roundtripStopwatch);
+                    operationSucceeded = await msg.SafeDeadLetterAsync(
+                        this.subscription);
                     break;
                 default:
                     break;
+            }
+
+            msg.Dispose();
+            this.OnMessageCompleted(false, countdown);
+
+            if (operationSucceeded)
+            {
+                completeReceive();
+            }
+            else
+            {
+                onReleaseError();
             }
         }
 

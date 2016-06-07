@@ -31,6 +31,6 @@ namespace Infrastructure.Azure.EventSourcing
         /// </summary>
         /// <param name="partitionKey">The partition key or session ID.</param>
         /// <param name="eventCount">A hint that specifies how many new events are pending.</param>
-        Task SendAsync(string partitionKey, int eventCount);
+        void Send(string partitionKey, int eventCount);
     }
 }

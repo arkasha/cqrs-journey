@@ -54,7 +54,7 @@ namespace Infrastructure.Sql.EventSourcing
             this.entityFactory = (id, events) => (T)constructor.Invoke(new object[] { id, events });
         }
 
-        public async Task<T> Find(Guid id)
+        public async Task<T> FindAsync(Guid id)
         {
             using (var context = this.contextFactory.Invoke())
             {
@@ -76,7 +76,7 @@ namespace Infrastructure.Sql.EventSourcing
 
         public async Task<T> Get(Guid id)
         {
-            var entity = await this.Find(id);
+            var entity = await this.FindAsync(id);
             if (entity == null)
             {
                 throw new EntityNotFoundException(id, sourceType);
@@ -85,7 +85,7 @@ namespace Infrastructure.Sql.EventSourcing
             return entity;
         }
 
-        public async Task Save(T eventSourced, string correlationId)
+        public async Task SaveAsync(T eventSourced, string correlationId)
         {
             // TODO: guarantee that only incremental versions of the event are stored
             var events = eventSourced.Events.ToArray();
@@ -97,7 +97,7 @@ namespace Infrastructure.Sql.EventSourcing
                     eventsSet.Add(this.Serialize(e, correlationId));
                 }
 
-                context.SaveChanges();
+                await context.SaveChangesAsync();
             }
 
             // TODO: guarantee delivery or roll back, or have a way to resume after a system crash

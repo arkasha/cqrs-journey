@@ -65,9 +65,9 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
         [Fact]
         public async Task when_adding_one_item_then_can_load_it()
         {
-            await this.sut.Save(this.partitionKey, new[] { this.events[0] });
+            await this.sut.SaveAsync(this.partitionKey, new[] { this.events[0] });
 
-            var stored = (await this.sut.Load(this.partitionKey, 0)).ToList();
+            var stored = (await this.sut.LoadAsync(this.partitionKey, 0)).ToList();
 
             Assert.Equal(1, stored.Count);
             Assert.Equal(this.events[0].Version, stored[0].Version);
@@ -80,9 +80,9 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
         [Fact]
         public async Task when_adding_multiple_items_then_can_load_them_in_order()
         {
-            await this.sut.Save(this.partitionKey, this.events);
+            await this.sut.SaveAsync(this.partitionKey, this.events);
 
-            var stored = (await this.sut.Load(this.partitionKey, 0)).ToList();
+            var stored = (await this.sut.LoadAsync(this.partitionKey, 0)).ToList();
 
             Assert.Equal(3, stored.Count);
             Assert.True(stored.All(x => x.SourceType == "Source"));
@@ -101,10 +101,10 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
         [Fact]
         public async Task when_adding_multiple_items_at_different_times_then_can_load_them_in_order()
         {
-            await this.sut.Save(this.partitionKey, new[] { this.events[0], this.events[1] });
-            await this.sut.Save(this.partitionKey, new[] { this.events[2] });
+            await this.sut.SaveAsync(this.partitionKey, new[] { this.events[0], this.events[1] });
+            await this.sut.SaveAsync(this.partitionKey, new[] { this.events[2] });
 
-            var stored = (await this.sut.Load(this.partitionKey, 0)).ToList();
+            var stored = (await this.sut.LoadAsync(this.partitionKey, 0)).ToList();
 
             Assert.Equal(3, stored.Count);
             Assert.True(stored.All(x => x.SourceType == "Source"));
@@ -122,9 +122,9 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
         [Fact]
         public async Task can_load_events_since_specified_version()
         {
-            await this.sut.Save(this.partitionKey, this.events);
+            await this.sut.SaveAsync(this.partitionKey, this.events);
 
-            var stored = (await this.sut.Load(this.partitionKey, 2)).ToList();
+            var stored = (await this.sut.LoadAsync(this.partitionKey, 2)).ToList();
 
             Assert.Equal(2, stored.Count);
             Assert.Equal(2, stored[0].Version);
@@ -136,12 +136,12 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
         [Fact]
         public async Task cannot_store_same_version()
         {
-            await this.sut.Save(this.partitionKey, new[] { this.events[0] });
+            await this.sut.SaveAsync(this.partitionKey, new[] { this.events[0] });
 
             var sameVersion = new EventData { Version = this.events[0].Version, TypeName = "Test2", Payload = "Payload2" };
-            await Assert.ThrowsAsync<ConcurrencyException>(() => this.sut.Save(this.partitionKey, new[] { sameVersion }));
+            await Assert.ThrowsAsync<ConcurrencyException>(() => this.sut.SaveAsync(this.partitionKey, new[] { sameVersion }));
 
-            var stored = (await this.sut.Load(this.partitionKey, 0)).ToList();
+            var stored = (await this.sut.LoadAsync(this.partitionKey, 0)).ToList();
 
             Assert.Equal(1, stored.Count);
             Assert.Equal(1, stored[0].Version);
@@ -151,12 +151,12 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
         [Fact]
         public async Task when_storing_same_version_within_batch_then_aborts_entire_commit()
         {
-            this.sut.Save(this.partitionKey, new[] { this.events[0] });
+            await this.sut.SaveAsync(this.partitionKey, new[] { this.events[0] });
 
             var sameVersion = new EventData { Version = this.events[0].Version, TypeName = "Test2", Payload = "Payload2" };
-            await Assert.ThrowsAsync<ConcurrencyException>(() => this.sut.Save(this.partitionKey, new[] { sameVersion, this.events[1] }));
+            await Assert.ThrowsAsync<ConcurrencyException>(() => this.sut.SaveAsync(this.partitionKey, new[] { sameVersion, this.events[1] }));
 
-            var stored = (await this.sut.Load(this.partitionKey, 0)).ToList();
+            var stored = (await this.sut.LoadAsync(this.partitionKey, 0)).ToList();
 
             Assert.Equal(1, stored.Count);
             Assert.Equal(1, stored[0].Version);
@@ -168,7 +168,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
     {
         public given_store_with_events()
         {
-            this.sut.Save(this.partitionKey, new[] { this.events[0], this.events[1] });
+            this.sut.SaveAsync(this.partitionKey, new[] { this.events[0], this.events[1] }).Wait();
         }
     }
 
@@ -235,7 +235,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
         private async Task DeletePendingAsyncAndWait(EventStore sut, string partitionKey, string rowKey)
         {
             var resetEvent = new AutoResetEvent(false);
-            await sut.DeletePendingAsync(partitionKey, rowKey, (deleted) => { resetEvent.Set(); Assert.True(deleted); }, Assert.Null);
+            await sut.DeletePendingAsync(partitionKey, rowKey);
             Assert.True(resetEvent.WaitOne(5000));
         }
 
@@ -244,11 +244,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
             var resetEvent = new AutoResetEvent(false);
             IEnumerable<IEventRecord> results = null;
             bool hasMore = false;
-            await sut.GetPendingAsync(partitionKey, (rs, more) =>
-            {
-                results = rs;
-                hasMore = more != null; resetEvent.Set();
-            }, Assert.Null);
+            await sut.GetPendingAsync(partitionKey);
             Assert.True(resetEvent.WaitOne(6000));
             Assert.False(hasMore);
             return results;
@@ -268,7 +264,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventSourcing.EventStoreFixture
             for (int i = 0; i < this.expectedPending.Length; i++)
             {
                 this.expectedPending[i] = "Test_" + Guid.NewGuid();
-                this.sut.Save(this.expectedPending[i], new[] { this.events[0] });
+                this.sut.SaveAsync(this.expectedPending[i], new[] { this.events[0] }).Wait();
             }
         }
 

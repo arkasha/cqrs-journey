@@ -46,7 +46,7 @@ namespace Infrastructure.Sql.Messaging
         {
             var message = this.BuildMessage(@event);
 
-            this.sender.Send(message);
+            this.sender.SendAsync(message);
         }
 
         /// <summary>
@@ -56,7 +56,7 @@ namespace Infrastructure.Sql.Messaging
         {
             var messages = events.Select(e => this.BuildMessage(e));
 
-            this.sender.Send(messages);
+            this.sender.SendAsync(messages);
         }
 
         private Message BuildMessage(Envelope<IEvent> @event)

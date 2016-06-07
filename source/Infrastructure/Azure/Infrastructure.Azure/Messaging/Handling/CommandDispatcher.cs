@@ -16,6 +16,7 @@ namespace Infrastructure.Azure.Messaging.Handling
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Threading.Tasks;
     using Infrastructure.Messaging;
     using Infrastructure.Messaging.Handling;
 
@@ -55,7 +56,7 @@ namespace Infrastructure.Azure.Messaging.Handling
         /// <summary>
         /// Processes the message by calling the registered handler.
         /// </summary>
-        public bool ProcessMessage(string traceIdentifier, ICommand payload, string messageId, string correlationId)
+        public async Task<bool> ProcessMessageAsync(string traceIdentifier, ICommand payload, string messageId, string correlationId)
         {
             var commandType = payload.GetType();
             ICommandHandler handler = null;
@@ -63,7 +64,7 @@ namespace Infrastructure.Azure.Messaging.Handling
             if (this.handlers.TryGetValue(commandType, out handler))
             {
                 // Trace.WriteLine(string.Format(CultureInfo.InvariantCulture, "Command{0} handled by {1}.", traceIdentifier, handler.GetType().FullName));
-                ((dynamic)handler).Handle((dynamic)payload);
+                await ((dynamic)handler).HandleAsync((dynamic)payload);
                 return true;
             }
             else

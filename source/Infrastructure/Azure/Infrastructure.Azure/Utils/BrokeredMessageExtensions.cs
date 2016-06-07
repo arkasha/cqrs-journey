@@ -24,49 +24,37 @@ namespace Infrastructure.Azure.Utils
         private static readonly RetryStrategy retryStrategy =
             new ExponentialBackoff(3, TimeSpan.FromSeconds(.5d), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(2)) { FastFirstRetry = true };
 
-        public static async Task SafeCompleteAsync(this BrokeredMessage message, string subscription, Action<bool> callback, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        public static async Task<bool> SafeCompleteAsync(this BrokeredMessage message, string subscription)
         {
-            await SafeMessagingActionAsync(
+            return await SafeMessagingActionAsync(
                 message.CompleteAsync,
                 message,
-                callback,
                 "An error occurred while completing message {0} in subscription {1} with processing time {3} (scheduling {4} request {5} roundtrip {6}). Error message: {2}",
                 message.MessageId,
-                subscription,
-                processingElapsedMilliseconds,
-                schedulingElapsedMilliseconds,
-                roundtripStopwatch);
+                subscription);
         }
 
-        public static async Task SafeAbandonAsync(this BrokeredMessage message, string subscription, Action<bool> callback, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        public static async Task<bool> SafeAbandonAsync(this BrokeredMessage message, string subscription)
         {
-            await SafeMessagingActionAsync(
+            return await SafeMessagingActionAsync(
                 message.AbandonAsync,
                 message,
-                callback,
                 "An error occurred while abandoning message {0} in subscription {1} with processing time {3} (scheduling {4} request {5} roundtrip {6}). Error message: {2}",
                 message.MessageId,
-                subscription,
-                processingElapsedMilliseconds,
-                schedulingElapsedMilliseconds,
-                roundtripStopwatch);
+                subscription);
         }
 
-        public static async Task SafeDeadLetterAsync(this BrokeredMessage message, string subscription, string reason, string description, Action<bool> callback, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        public static async Task<bool> SafeDeadLetterAsync(this BrokeredMessage message, string subscription)
         {
-            await SafeMessagingActionAsync(
+            return await SafeMessagingActionAsync(
                 message.DeadLetterAsync,
                 message,
-                callback,
                 "An error occurred while dead-lettering message {0} in subscription {1} with processing time {3} (scheduling {4} request {5} roundtrip {6}). Error message: {2}",
                 message.MessageId,
-                subscription,
-                processingElapsedMilliseconds,
-                schedulingElapsedMilliseconds,
-                roundtripStopwatch);
+                subscription);
         }
 
-        internal static async Task SafeMessagingActionAsync(Func<Task> task, BrokeredMessage message, Action<bool> callback, string actionErrorDescription, string messageId, string subscription, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        internal static async Task<bool> SafeMessagingActionAsync(Func<Task> task, BrokeredMessage message, string actionErrorDescription, string messageId, string subscription)
         {
             var retryPolicy = new RetryPolicy<ServiceBusTransientErrorDetectionStrategy>(retryStrategy);
             retryPolicy.Retrying +=
@@ -79,38 +67,25 @@ namespace Infrastructure.Azure.Utils
                     message.MessageId);
                 };
 
-            long messagingActionStart = 0;
+            try
+            {
+                await retryPolicy.ExecuteAsync(task);
 
-            await retryPolicy.ExecuteAsync(() =>
+                return true;
+            }
+            catch (Exception ex)
             {
-                messagingActionStart = roundtripStopwatch.ElapsedMilliseconds;
-                return task();
-            }).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
+                if (ex is MessageLockLostException || ex is MessagingException || ex is TimeoutException)
                 {
-                    roundtripStopwatch.Stop();
-
-                    foreach (var e in t.Exception.Flatten().InnerExceptions)
-                    {
-                        if (e is MessageLockLostException || e is MessagingException || e is TimeoutException)
-                        {
-                            Trace.TraceWarning(actionErrorDescription, messageId, subscription, e.GetType().Name + " - " + e.Message, processingElapsedMilliseconds, schedulingElapsedMilliseconds, messagingActionStart, roundtripStopwatch.ElapsedMilliseconds);
-                        }
-                        else
-                        {
-                            Trace.TraceError("Unexpected error releasing message in subscription {1}:\r\n{0}", e, subscription);
-                        }
-                        }
-
-                    callback(false);
+                    Trace.TraceWarning(actionErrorDescription, messageId, subscription, ex.GetType().Name + " - " + ex.Message);
                 }
                 else
                 {
-                    roundtripStopwatch.Stop();
-                    callback(true);
+                    Trace.TraceError("Unexpected error releasing message in subscription {1}:\r\n{0}", ex, subscription);
                 }
-            });
+
+                return false;
+            }
         }
     }
 }

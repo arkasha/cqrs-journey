@@ -15,7 +15,7 @@ namespace Infrastructure.Azure.Messaging
 {
     using System.Collections.Generic;
     using System.IO;
-
+    using System.Threading.Tasks;
     using Infrastructure.EventSourcing;
     using Infrastructure.Messaging;
     using Infrastructure.Serialization;
@@ -46,19 +46,19 @@ namespace Infrastructure.Azure.Messaging
         /// <summary>
         /// Sends the specified event.
         /// </summary>
-        public void Publish(Envelope<IEvent> @event)
+        public async Task PublishAsync(Envelope<IEvent> @event)
         {
-            this.sender.Send(() => this.BuildMessage(@event));
+            await this.sender.SendAsync(() => this.BuildMessage(@event));
         }
 
         /// <summary>
         /// Publishes the specified events.
         /// </summary>
-        public void Publish(IEnumerable<Envelope<IEvent>> events)
+        public async Task PublishAsync(IEnumerable<Envelope<IEvent>> events)
         {
             foreach (var @event in events)
             {
-                this.Publish(@event);
+                await this.PublishAsync(@event);
             }
         }
 

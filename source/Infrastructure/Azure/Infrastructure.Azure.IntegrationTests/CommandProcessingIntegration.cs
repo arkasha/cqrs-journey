@@ -15,6 +15,7 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
 {
     using System;
     using System.Threading;
+    using System.Threading.Tasks;
     using Infrastructure.Azure.Messaging;
     using Infrastructure.Azure.Messaging.Handling;
     using Infrastructure.Messaging;
@@ -44,7 +45,7 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
 
             try
             {
-                bus.Send(new FooCommand());
+                bus.SendAsync(new FooCommand());
 
                 e.Wait(TimeoutPeriod);
 
@@ -72,8 +73,8 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
 
             try
             {
-                bus.Send(new FooCommand());
-                bus.Send(new BarCommand());
+                bus.SendAsync(new FooCommand());
+                bus.SendAsync(new BarCommand());
 
                 fooWaiter.Wait(TimeoutPeriod);
                 barWaiter.Wait(TimeoutPeriod);
@@ -105,7 +106,7 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
 
             try
             {
-                bus.Send(new BarCommand());
+                bus.SendAsync(new BarCommand());
 
                 e.Wait(TimeoutPeriod);
                 // Give the other event handler some time.
@@ -153,38 +154,45 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
         }
 
         [Fact]
-        public void when_sending_command_with_delay_then_sets_message_enqueue_time()
+        public async Task when_sending_command_with_delay_then_sets_message_enqueue_time()
         {
             var sender = new Mock<IMessageSender>();
             var bus = new CommandBus(sender.Object, new StandardMetadataProvider(), new JsonTextSerializer());
 
             BrokeredMessage message = null;
-            sender.Setup(x => x.Send(It.IsAny<Func<BrokeredMessage>>()))
-                .Callback<Func<BrokeredMessage>>(mf => message = mf());
+            sender.Setup(x => x.SendAsync(It.IsAny<Func<BrokeredMessage>>()))
+                .Returns<Func<BrokeredMessage>>(mf => Task.Run(() => message = mf()));
 
-            bus.Send(new Envelope<ICommand>(new FooCommand()) { Delay = TimeSpan.FromMinutes(5) });
+            await bus.SendAsync(new Envelope<ICommand>(new FooCommand()) { Delay = TimeSpan.FromMinutes(5) });
 
             Assert.NotNull(message);
             Assert.True(message.ScheduledEnqueueTimeUtc > DateTime.UtcNow.Add(TimeSpan.FromMinutes(4)));
         }
 
         [Fact]
-        public void when_sending_multiple_commands_with_delay_then_sets_message_enqueue_time()
+        public async Task when_sending_multiple_commands_with_delay_then_sets_message_enqueue_time()
         {
             var sender = new Mock<IMessageSender>();
             var bus = new CommandBus(sender.Object, new StandardMetadataProvider(), new JsonTextSerializer());
 
             BrokeredMessage message = null;
-            sender.Setup(x => x.Send(It.IsAny<Func<BrokeredMessage>>()))
-                .Callback<Func<BrokeredMessage>>(mf =>
+            sender.Setup(x => x.SendAsync(It.IsAny<Func<BrokeredMessage>>())).Returns<Func<BrokeredMessage>>(mf =>
+            {
+                return Task.Run(() =>
                 {
                     var m = mf();
                     if (m.ScheduledEnqueueTimeUtc > DateTime.UtcNow.Add(TimeSpan.FromMinutes(4))) message = m;
                 });
+            });
+            //.Callback<Func<BrokeredMessage>>(mf =>
+            //{
+            //    var m = mf();
+            //    if (m.ScheduledEnqueueTimeUtc > DateTime.UtcNow.Add(TimeSpan.FromMinutes(4))) message = m;
+            //});
 
-            bus.Send(new[] 
+            await bus.SendAsync(new[]
             {
-                new Envelope<ICommand>(new FooCommand()) { Delay = TimeSpan.FromMinutes(5) }, 
+                new Envelope<ICommand>(new FooCommand()) { Delay = TimeSpan.FromMinutes(5) },
                 new Envelope<ICommand>(new BarCommand())
             });
 
@@ -225,16 +233,22 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
             public bool HandledBarCommand { get; private set; }
             public bool HandledFooCommand { get; private set; }
 
-            public void Handle(BarCommand command)
+            public async Task HandleAsync(BarCommand command)
             {
-                this.HandledBarCommand = true;
-                this.barWaiter.Set();
+                await Task.Run(() =>
+                {
+                    this.HandledBarCommand = true;
+                    this.barWaiter.Set();
+                });
             }
 
-            public void Handle(FooCommand command)
+            public async Task HandleAsync(FooCommand command)
             {
-                this.HandledFooCommand = true;
-                this.fooWaiter.Set();
+                await Task.Run(() =>
+                {
+                    this.HandledFooCommand = true;
+                    this.fooWaiter.Set();
+                });
             }
         }
 
@@ -247,10 +261,13 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
                 this.e = e;
             }
 
-            public void Handle(FooCommand command)
+            public async Task HandleAsync(FooCommand command)
             {
-                this.Called = true;
-                this.e.Set();
+                await Task.Run(() =>
+                {
+                    this.Called = true;
+                    this.e.Set();
+                });
             }
 
             public bool Called { get; set; }
@@ -265,10 +282,13 @@ namespace Infrastructure.Azure.IntegrationTests.CommandProcessingIntegration
                 this.e = e;
             }
 
-            public void Handle(BarCommand command)
+            public async Task HandleAsync(BarCommand command)
             {
-                this.Called = true;
-                this.e.Set();
+                await Task.Run(() =>
+                {
+                    this.Called = true;
+                    this.e.Set();
+                });
             }
 
             public bool Called { get; set; }

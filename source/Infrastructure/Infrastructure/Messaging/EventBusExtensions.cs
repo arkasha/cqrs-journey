@@ -23,12 +23,12 @@ namespace Infrastructure.Messaging
     {
         public static void Publish(this IEventBus bus, IEvent @event)
         {
-            bus.Publish(new Envelope<IEvent>(@event));
+            bus.PublishAsync(new Envelope<IEvent>(@event));
         }
 
         public static void Publish(this IEventBus bus, IEnumerable<IEvent> events)
         {
-            bus.Publish(events.Select(x => new Envelope<IEvent>(x)));
+            bus.PublishAsync(events.Select(x => new Envelope<IEvent>(x)));
         }
     }
 }

@@ -23,7 +23,7 @@ namespace Infrastructure.EventSourcing
         /// </summary>
         /// <param name="id">The id of the entity</param>
         /// <returns>The hydrated entity, or null if it does not exist.</returns>
-        Task<T> Find(Guid id);
+        Task<T> FindAsync(Guid id);
 
         /// <summary>
         /// Retrieves the event sourced entity.
@@ -38,6 +38,6 @@ namespace Infrastructure.EventSourcing
         /// </summary>
         /// <param name="eventSourced">The entity.</param>
         /// <param name="correlationId">A correlation id to use when publishing events.</param>
-        Task Save(T eventSourced, string correlationId);
+        Task SaveAsync(T eventSourced, string correlationId);
     }
 }

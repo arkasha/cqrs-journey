@@ -13,6 +13,8 @@
 
 namespace Infrastructure.Messaging.Handling
 {
+    using System.Threading.Tasks;
+
     /// <summary>
 	/// Marker interface that makes it easier to discover handlers via reflection.
 	/// </summary>
@@ -21,6 +23,6 @@ namespace Infrastructure.Messaging.Handling
 	public interface ICommandHandler<T> : ICommandHandler
 		where T : ICommand
 	{
-		void Handle(T command);
+		Task HandleAsync(T command);
 	}
 }

@@ -48,14 +48,14 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
                     }
             };
 
-            sut.Save(entity, "correlation");
+            sut.SaveAsync(entity, "correlation");
         }
 
         [Fact]
         public void then_stores_in_event_store()
         {
             this.eventStore.Verify(
-                s => s.Save(
+                s => s.SaveAsync(
                     It.IsAny<string>(),
                     It.Is<IEnumerable<EventData>>(
                         x =>
@@ -76,13 +76,13 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
         [Fact]
         public void then_uses_composed_partition_key()
         {
-            this.eventStore.Verify(s => s.Save("TestEntity_" + this.id.ToString(), It.IsAny<IEnumerable<EventData>>()));
+            this.eventStore.Verify(s => s.SaveAsync("TestEntity_" + this.id.ToString(), It.IsAny<IEnumerable<EventData>>()));
         }
 
         [Fact]
         public void then_notifies_publisher_about_the_pending_partition_key()
         {
-            this.publisher.Verify(s => s.SendAsync("TestEntity_" + this.id.ToString(), 2));
+            this.publisher.Verify(s => s.Send("TestEntity_" + this.id.ToString(), 2));
         }
     }
 
@@ -113,14 +113,14 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
                 Memento = this.memento,
             };
 
-            sut.Save(entity, "correlation");
+            sut.SaveAsync(entity, "correlation");
         }
 
         [Fact]
         public void then_stores_in_event_store()
         {
             this.eventStore.Verify(
-                s => s.Save(
+                s => s.SaveAsync(
                     It.IsAny<string>(),
                     It.Is<IEnumerable<EventData>>(
                         x =>
@@ -141,13 +141,13 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
         [Fact]
         public void then_uses_composed_partition_key()
         {
-            this.eventStore.Verify(s => s.Save("TestOriginatorEntity_" + this.id.ToString(), It.IsAny<IEnumerable<EventData>>()));
+            this.eventStore.Verify(s => s.SaveAsync("TestOriginatorEntity_" + this.id.ToString(), It.IsAny<IEnumerable<EventData>>()));
         }
 
         [Fact]
         public void then_notifies_publisher_about_the_pending_partition_key()
         {
-            this.publisher.Verify(s => s.SendAsync("TestOriginatorEntity_" + this.id.ToString(), 2));
+            this.publisher.Verify(s => s.Send("TestOriginatorEntity_" + this.id.ToString(), 2));
         }
 
         [Fact]
@@ -173,10 +173,10 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
             var serialized = events.Select(x => new EventData { Version = x.Version, Payload = Serialize(x) });
             this.id = Guid.NewGuid();
             var eventStore = new Mock<IEventStore>();
-            eventStore.Setup(x => x.Load(It.IsAny<string>(), It.IsAny<int>())).Returns(Task.FromResult(serialized));
+            eventStore.Setup(x => x.LoadAsync(It.IsAny<string>(), It.IsAny<int>())).Returns(Task.FromResult(serialized));
             var sut = new AzureEventSourcedRepository<TestEntity>(eventStore.Object, Mock.Of<IEventStoreBusPublisher>(), new JsonTextSerializer(), new StandardMetadataProvider(), null);
 
-            var entity = await sut.Find(this.id);
+            var entity = await sut.FindAsync(this.id);
 
             Assert.NotNull(entity);
             Assert.Equal(this.id, entity.Id);
@@ -211,10 +211,10 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
             var cache = new MemoryCache(Guid.NewGuid().ToString());
             cache.Add("TestOriginatorEntity_" + this.id.ToString(), new Tuple<IMemento, DateTime?>(this.memento, null), DateTimeOffset.UtcNow.AddMinutes(10));
 
-            eventStore.Setup(x => x.Load(It.IsAny<string>(), 2)).Returns(Task.FromResult(serialized));
+            eventStore.Setup(x => x.LoadAsync(It.IsAny<string>(), 2)).Returns(Task.FromResult(serialized));
             var sut = new AzureEventSourcedRepository<TestOriginatorEntity>(eventStore.Object, Mock.Of<IEventStoreBusPublisher>(), new JsonTextSerializer(), new StandardMetadataProvider(), cache);
 
-            var entity = await sut.Find(this.id);
+            var entity = await sut.FindAsync(this.id);
 
             Assert.NotNull(entity);
             Assert.Equal(this.id, entity.Id);
@@ -247,7 +247,7 @@ namespace Infrastructure.Azure.Tests.EventSourcing.AzureEventSourcedRepositoryFi
         [Fact]
         public async Task when_finding_then_returns_null()
         {
-            Assert.Null(await this.sut.Find(this.id));
+            Assert.Null(await this.sut.FindAsync(this.id));
         }
 
         [Fact]

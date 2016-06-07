@@ -52,7 +52,7 @@ namespace Infrastructure.Azure.Messaging.Handling
         /// </summary>
         protected override void ProcessMessage(string traceIdentifier, object payload, string messageId, string correlationId)
         {
-            this.commandDispatcher.ProcessMessage(traceIdentifier, (ICommand)payload, messageId, correlationId);
+            this.commandDispatcher.ProcessMessageAsync(traceIdentifier, (ICommand)payload, messageId, correlationId);
         }
     }
 }

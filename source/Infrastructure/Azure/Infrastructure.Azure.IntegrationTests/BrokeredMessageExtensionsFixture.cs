@@ -29,7 +29,6 @@ namespace Infrastructure.Azure.IntegrationTests
         {
             int endCounts = 0;
             bool? success = null;
-            var stopwatch = Stopwatch.StartNew();
 
             Func<Task> timeout = () =>
             {
@@ -39,29 +38,23 @@ namespace Infrastructure.Azure.IntegrationTests
                 });
             };
 
-            await BrokeredMessageExtensions
+            success = await BrokeredMessageExtensions
                 .SafeMessagingActionAsync(
                    timeout,
                    new BrokeredMessage(),
-                   s => success = s,
-                   "error: '{0}' '{1}' '{2}' '{3}' '{4}' '{5}' '{6}'",
+                   "error: '{0}' '{1}' '{2}'",
                    "message id",
-                   "sub",
-                   5000,
-                   1000,
-                   stopwatch);
+                   "sub");
 
             Assert.Equal(2, endCounts);
             Assert.True(success.HasValue);
             Assert.True(success.Value);
-            Assert.False(stopwatch.IsRunning);
         }
 
         [Fact]
         public async Task when_failing_transiently_then_retries_until_maximum_retries()
         {
             bool? success = null;
-            var stopwatch = Stopwatch.StartNew();
 
             Func<Task> timeout = () =>
             {
@@ -71,21 +64,16 @@ namespace Infrastructure.Azure.IntegrationTests
                 });
             };
 
-            await BrokeredMessageExtensions
+            success = await BrokeredMessageExtensions
                 .SafeMessagingActionAsync(
                    timeout, 
                    new BrokeredMessage(),
-                   s => success = s,
-                   "error: '{0}' '{1}' '{2}' '{3}' '{4}' '{5}' '{6}'",
+                   "error: '{0}' '{1}' '{2}'",
                    "message id",
-                   "sub",
-                   5000,
-                   100,
-                   stopwatch);
+                   "sub");
 
             Assert.True(success.HasValue);
             Assert.False(success.Value);
-            Assert.False(stopwatch.IsRunning);
         }
     }
 }

@@ -17,6 +17,7 @@ namespace Infrastructure.Azure.Messaging
 {
     using System;
     using System.Diagnostics;
+    using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
     using Infrastructure.Azure.Instrumentation;
@@ -24,6 +25,7 @@ namespace Infrastructure.Azure.Messaging
     using Microsoft.Practices.EnterpriseLibrary.TransientFaultHandling;
     using Microsoft.ServiceBus;
     using Microsoft.ServiceBus.Messaging;
+    using Newtonsoft.Json;
 
     /// <summary>
     /// Implements an asynchronous receiver of messages from a Windows Azure 
@@ -146,10 +148,26 @@ namespace Infrastructure.Azure.Messaging
             {
                 this.MessageHandler = messageHandler;
                 this.cancellationSource = new CancellationTokenSource();
-                Task.Factory.StartNew(() =>
-                    this.ReceiveMessages(this.cancellationSource.Token),
-                    this.cancellationSource.Token);
-                this.dynamicThrottling.Start(this.cancellationSource.Token);
+                try
+                {
+                    this.client.OnMessageAsync(
+                        async message =>
+                        {
+                            var completeAction = MessageHandler(message);
+
+                            await ReleaseMessageAsync(message, completeAction);
+                        },
+                        new OnMessageOptions
+                        {
+                            AutoComplete = false,
+                            MaxConcurrentCalls = 50
+                        });
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Trace.TraceWarning("Message pump already started");
+                }
+
             }
         }
 
@@ -214,102 +232,92 @@ namespace Infrastructure.Azure.Messaging
             Action<Exception> recoverReceive = null;
 
             // Declare an action responsible for the core operations in the message receive loop.
-            Action receiveMessage = (() =>
+            Action receiveMessage = (async () =>
             {
-                // Use a retry policy to execute the Receive action in an asynchronous and reliable fashion.
-                this.receiveRetryPolicy.ExecuteAsync(() => this.client.ReceiveAsync(ReceiveLongPollingTimeout), cancellationToken).ContinueWith(t =>
+                try
                 {
-                    if (t.IsFaulted)
+                    // Use a retry policy to execute the Receive action in an asynchronous and reliable fashion.
+                    var message = await this.receiveRetryPolicy.ExecuteAsync(() => this.client.ReceiveAsync(ReceiveLongPollingTimeout), cancellationToken);
+
+                    // Process the message once it was successfully received
+                    if (this.processInParallel)
                     {
-                        if (!(t.Exception.InnerException is TimeoutException))
-                        {
-                            // Invoke a custom action to indicate that we have encountered an exception and
-                            // need further decision as to whether to continue receiving messages.
-                            recoverReceive.Invoke(t.Exception.InnerException);
-                        }
+                        // Continue receiving and processing new messages asynchronously
+                        await Task.Run(receiveNext, cancellationToken);
                     }
-                    if (!t.IsCanceled)
+
+                    var roundtripStopwatch = Stopwatch.StartNew();
+                    long schedulingElapsedMilliseconds = 0;
+                    long processingElapsedMilliseconds = 0;
+
+                    await Task.Run(async () =>
                     {
-                        var msg = t.Result;
-                        // Process the message once it was successfully received
-                        if (this.processInParallel)
-                        {
-                            // Continue receiving and processing new messages asynchronously
-                            Task.Factory.StartNew(receiveNext);
-                        }
+                        var releaseAction = MessageReleaseAction.AbandonMessage;
 
-                        // Check if we actually received any messages.
-                        if (!t.IsFaulted && msg != null)
+                        try
                         {
-                            var roundtripStopwatch = Stopwatch.StartNew();
-                            long schedulingElapsedMilliseconds = 0;
-                            long processingElapsedMilliseconds = 0;
+                            this.instrumentation.MessageReceived();
 
-                            Task.Factory.StartNew(() =>
+                            schedulingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds;
+
+                            // Make sure the process was told to stop receiving while it was waiting for a new message.
+                            if (!cancellationToken.IsCancellationRequested)
                             {
-                                var releaseAction = MessageReleaseAction.AbandonMessage;
-
                                 try
                                 {
-                                    this.instrumentation.MessageReceived();
-
-                                    schedulingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds;
-
-                                    // Make sure the process was told to stop receiving while it was waiting for a new message.
-                                    if (!cancellationToken.IsCancellationRequested)
+                                    try
                                     {
-                                        try
-                                        {
-                                            try
-                                            {
-                                                // Process the received message.
-                                                releaseAction = this.InvokeMessageHandler(msg);
+                                        // Process the received message.
+                                        releaseAction = this.InvokeMessageHandler(message);
 
-                                                processingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds - schedulingElapsedMilliseconds;
-                                                this.instrumentation.MessageProcessed(releaseAction.Kind == MessageReleaseActionKind.Complete, processingElapsedMilliseconds);
-                                            }
-                                            catch
-                                            {
-                                                processingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds - schedulingElapsedMilliseconds;
-                                                this.instrumentation.MessageProcessed(false, processingElapsedMilliseconds);
+                                        processingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds - schedulingElapsedMilliseconds;
+                                        this.instrumentation.MessageProcessed(releaseAction.Kind == MessageReleaseActionKind.Complete, processingElapsedMilliseconds);
+                                    }
+                                    catch
+                                    {
+                                        processingElapsedMilliseconds = roundtripStopwatch.ElapsedMilliseconds - schedulingElapsedMilliseconds;
+                                        this.instrumentation.MessageProcessed(false, processingElapsedMilliseconds);
 
-                                                throw;
-                                            }
-                                        }
-                                        finally
-                                        {
-                                            if (roundtripStopwatch.Elapsed > TimeSpan.FromSeconds(45))
-                                            {
-                                                this.dynamicThrottling.Penalize();
-                                            }
-                                        }
+                                        throw;
                                     }
                                 }
                                 finally
                                 {
-                                    // Ensure that any resources allocated by a BrokeredMessage instance are released.
-                                    this.ReleaseMessage(msg, releaseAction, processingElapsedMilliseconds, schedulingElapsedMilliseconds, roundtripStopwatch);
+                                    if (roundtripStopwatch.Elapsed > TimeSpan.FromSeconds(45))
+                                    {
+                                        this.dynamicThrottling.Penalize();
+                                    }
                                 }
-
-                                if (!this.processInParallel)
-                                {
-                                    // Continue receiving and processing new messages until told to stop.
-                                    receiveNext.Invoke();
-                                }
-                            });
-                        }
-                        else
-                        {
-                            this.dynamicThrottling.NotifyWorkCompleted();
-                            if (!this.processInParallel)
-                            {
-                                // Continue receiving and processing new messages until told to stop.
-                                receiveNext.Invoke();
                             }
                         }
-                    }
-                });
-                
+                        finally
+                        {
+                            // Ensure that any resources allocated by a BrokeredMessage instance are released.
+                            await this.ReleaseMessageAsync(message, releaseAction);
+                        }
+
+                        if (!this.processInParallel)
+                        {
+                            // Continue receiving and processing new messages until told to stop.
+                            receiveNext.Invoke();
+                        }
+                    }, cancellationToken);
+
+                }
+                catch (TimeoutException)
+                {
+                    // TimeoutException is not just transient but completely expected in this case, so not relying on Topaz to retry
+                }
+                catch (Exception ex)
+                {
+                    // Invoke a custom action to indicate that we have encountered an exception and
+                    // need further decision as to whether to continue receiving messages.
+                    recoverReceive.Invoke(ex);
+                }
+                finally
+                {
+                    receiveNext.Invoke();
+                }
             });
 
             // Initialize an action to receive the next message in the queue or end if cancelled.
@@ -334,7 +342,7 @@ namespace Infrastructure.Azure.Messaging
                 if (!cancellationToken.IsCancellationRequested)
                 {
                     // Continue receiving and processing new messages until told to stop regardless of any exceptions.
-                    TaskEx.Delay(10000).ContinueWith(t => receiveMessage.Invoke());
+                    Task.Delay(10000).ContinueWith(t => receiveMessage.Invoke());
                 }
             };
 
@@ -342,51 +350,29 @@ namespace Infrastructure.Azure.Messaging
             receiveNext.Invoke();
         }
 
-        private void ReleaseMessage(BrokeredMessage msg, MessageReleaseAction releaseAction, long processingElapsedMilliseconds, long schedulingElapsedMilliseconds, Stopwatch roundtripStopwatch)
+        private async Task ReleaseMessageAsync(BrokeredMessage msg, MessageReleaseAction releaseAction)
         {
+            bool completed = false;
             switch (releaseAction.Kind)
             {
                 case MessageReleaseActionKind.Complete:
-                    msg.SafeCompleteAsync(
-                        this.subscription,
-                        success =>
-                        {
-                            msg.Dispose();
-                            this.instrumentation.MessageCompleted(success);
-                            if (success)
-                            {
-                                this.dynamicThrottling.NotifyWorkCompleted();
-                            }
-                            else
-                            {
-                                this.dynamicThrottling.NotifyWorkCompletedWithError();
-                            }
-                        },
-                        processingElapsedMilliseconds,
-                        schedulingElapsedMilliseconds,
-                        roundtripStopwatch);
+                    completed = await msg.SafeCompleteAsync(
+                        this.subscription);
                     break;
                 case MessageReleaseActionKind.Abandon:
-                    msg.SafeAbandonAsync(
-                        this.subscription,
-                        success => { msg.Dispose(); this.instrumentation.MessageCompleted(false); this.dynamicThrottling.NotifyWorkCompletedWithError(); },
-                        processingElapsedMilliseconds,
-                        schedulingElapsedMilliseconds,
-                        roundtripStopwatch);
+                    await msg.SafeAbandonAsync(
+                         this.subscription);
                     break;
                 case MessageReleaseActionKind.DeadLetter:
-                    msg.SafeDeadLetterAsync(
-                        this.subscription,
-                        releaseAction.DeadLetterReason,
-                        releaseAction.DeadLetterDescription,
-                        success => { msg.Dispose(); this.instrumentation.MessageCompleted(false); this.dynamicThrottling.NotifyWorkCompletedWithError(); },
-                        processingElapsedMilliseconds,
-                        schedulingElapsedMilliseconds,
-                        roundtripStopwatch);
+                    await msg.SafeDeadLetterAsync(
+                        this.subscription);
                     break;
                 default:
                     break;
             }
+
+            msg.Dispose();
+            this.instrumentation.MessageCompleted(completed);
         }
     }
 }

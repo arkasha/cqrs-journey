@@ -31,8 +31,8 @@ namespace Infrastructure.Azure.MessageLog
 
         public AzureMessageLogWriter(CloudStorageAccount account, string tableName)
         {
-            if (account == null) throw new ArgumentNullException("account");
-            if (tableName == null) throw new ArgumentNullException("tableName");
+            if (account == null) throw new ArgumentNullException(nameof(account));
+            if (tableName == null) throw new ArgumentNullException(nameof(tableName));
             if (string.IsNullOrWhiteSpace(tableName)) throw new ArgumentException("tableName");
 
             this.account = account;

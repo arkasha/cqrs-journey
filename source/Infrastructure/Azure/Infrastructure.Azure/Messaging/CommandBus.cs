@@ -16,6 +16,7 @@ namespace Infrastructure.Azure.Messaging
     using System;
     using System.Collections.Generic;
     using System.IO;
+    using System.Threading.Tasks;
     using Infrastructure.Messaging;
     using Infrastructure.Serialization;
     using Microsoft.ServiceBus.Messaging;
@@ -42,16 +43,16 @@ namespace Infrastructure.Azure.Messaging
         /// <summary>
         /// Sends the specified command.
         /// </summary>
-        public void Send(Envelope<ICommand> command)
+        public async Task SendAsync(Envelope<ICommand> command)
         {
-            this.sender.Send(() => this.BuildMessage(command));
+            await this.sender.SendAsync(() => this.BuildMessage(command));
         }
 
-        public void Send(IEnumerable<Envelope<ICommand>> commands)
+        public async Task SendAsync(IEnumerable<Envelope<ICommand>> commands)
         {
             foreach (var command in commands)
             {
-                this.Send(command);
+                await this.SendAsync(command);
             }
         }
 

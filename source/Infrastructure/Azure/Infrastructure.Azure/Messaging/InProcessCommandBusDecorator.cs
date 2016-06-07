@@ -18,16 +18,17 @@ namespace Infrastructure.Azure.Messaging
     using System.Diagnostics;
     using System.Globalization;
     using System.Linq;
+    using System.Threading.Tasks;
     using Infrastructure.Azure.Messaging.Handling;
     using Infrastructure.Messaging;
     using Infrastructure.Messaging.Handling;
 
-    public class SynchronousCommandBusDecorator : ICommandBus, ICommandHandlerRegistry
+    public class InProcessCommandBusDecorator : ICommandBus, ICommandHandlerRegistry
     {
         private readonly ICommandBus commandBus;
         private readonly CommandDispatcher commandDispatcher;
 
-        public SynchronousCommandBusDecorator(ICommandBus commandBus)
+        public InProcessCommandBusDecorator(ICommandBus commandBus)
         {
             this.commandBus = commandBus;
             this.commandDispatcher = new CommandDispatcher();
@@ -38,22 +39,22 @@ namespace Infrastructure.Azure.Messaging
             this.commandDispatcher.Register(commandHandler);
         }
 
-        public void Send(Envelope<ICommand> command)
+        public async Task SendAsync(Envelope<ICommand> command)
         {
-            if (!this.DoSend(command))
+            if (!(await this.DoSendAsync(command)))
             {
                 // Trace.TraceInformation("Command with id {0} was not handled locally. Sending it through the bus.", command.Body.Id);
-                this.commandBus.Send(command);
+                await this.commandBus.SendAsync(command);
             }
         }
 
-        public void Send(IEnumerable<Envelope<ICommand>> commands)
+        public async Task SendAsync(IEnumerable<Envelope<ICommand>> commands)
         {
             var pending = commands.ToList();
 
             while (pending.Count > 0)
             {
-                if (this.DoSend(pending[0]))
+                if (await this.DoSendAsync(pending[0]))
                 {
                     pending.RemoveAt(0);
                 }
@@ -66,18 +67,18 @@ namespace Infrastructure.Azure.Messaging
             if (pending.Count > 0)
             {
                 // Trace.TraceInformation("Command with id {0} was not handled locally. Sending it and all remaining commands through the bus.", pending[0].Body.Id);
-                this.commandBus.Send(pending);
+                await this.commandBus.SendAsync(pending);
             }
         }
 
-        private bool DoSend(Envelope<ICommand> command)
+        private async Task<bool> DoSendAsync(Envelope<ICommand> command)
         {
             bool handled = false;
 
             try
             {
                 var traceIdentifier = string.Format(CultureInfo.CurrentCulture, " (local handling of command with id {0})", command.Body.Id);
-                handled = this.commandDispatcher.ProcessMessage(traceIdentifier, command.Body, command.MessageId, command.CorrelationId);
+                handled = await this.commandDispatcher.ProcessMessageAsync(traceIdentifier, command.Body, command.MessageId, command.CorrelationId);
 
                 // TODO try to log the command
             }

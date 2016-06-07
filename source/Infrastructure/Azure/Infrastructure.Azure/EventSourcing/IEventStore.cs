@@ -18,8 +18,8 @@ namespace Infrastructure.Azure.EventSourcing
 
     public interface IEventStore
     {
-        Task<IEnumerable<EventData>> Load(string partitionKey, int version);
+        Task<IEnumerable<EventData>> LoadAsync(string partitionKey, int version);
 
-        Task Save(string partitionKey, IEnumerable<EventData> events);
+        Task SaveAsync(string partitionKey, IEnumerable<EventData> events);
     }
 }

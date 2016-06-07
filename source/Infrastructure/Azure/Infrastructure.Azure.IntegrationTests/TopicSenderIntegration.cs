@@ -69,10 +69,10 @@ namespace Infrastructure.Azure.IntegrationTests.TopicSenderIntegration
         }
 
         [Fact]
-        public void when_sending_message_then_succeeds()
+        public async Task when_sending_message_then_succeeds()
         {
             var payload = Guid.NewGuid().ToString();
-            this.sut.Send(() => new BrokeredMessage(payload));
+            await this.sut.SendAsync(() => new BrokeredMessage(payload));
 
             var message = this.subscriptionClient.Receive();
             Assert.Equal(payload, message.GetBody<string>());

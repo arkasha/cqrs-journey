@@ -15,6 +15,7 @@ namespace Infrastructure.Sql.IntegrationTests.Messaging.MessageReceiverFixture
 {
     using System;
     using System.Threading;
+    using System.Threading.Tasks;
     using Infrastructure.Sql.Messaging;
     using Infrastructure.Sql.Messaging.Implementation;
     using Xunit;
@@ -48,13 +49,13 @@ namespace Infrastructure.Sql.IntegrationTests.Messaging.MessageReceiverFixture
         }
 
         [Fact]
-        public void when_sending_message_then_receives_message()
+        public async Task when_sending_message_then_receives_message()
         {
             Message message = null;
 
             this.receiver.MessageReceived += (s, e) => { message = e.Message; };
 
-            this.sender.Send(new Message("test message"));
+            await this.sender.SendAsync(new Message("test message"));
 
             Assert.True(this.receiver.ReceiveMessage());
             Assert.Equal("test message", message.Body);
@@ -69,7 +70,7 @@ namespace Infrastructure.Sql.IntegrationTests.Messaging.MessageReceiverFixture
 
             this.receiver.MessageReceived += (s, e) => { message = e.Message; };
 
-            this.sender.Send(new Message("test message", correlationId: "correlation"));
+            this.sender.SendAsync(new Message("test message", correlationId: "correlation"));
 
             Assert.True(this.receiver.ReceiveMessage());
             Assert.Equal("test message", message.Body);
@@ -78,25 +79,25 @@ namespace Infrastructure.Sql.IntegrationTests.Messaging.MessageReceiverFixture
         }
 
         [Fact]
-        public void when_successfully_handles_message_then_removes_message()
+        public async Task when_successfully_handles_message_then_removes_message()
         {
             this.receiver.MessageReceived += (s, e) => { };
 
-            this.sender.Send(new Message("test message"));
+            await this.sender.SendAsync(new Message("test message"));
 
             Assert.True(this.receiver.ReceiveMessage());
             Assert.False(this.receiver.ReceiveMessage());
         }
 
         [Fact]
-        public void when_unsuccessfully_handles_message_then_does_not_remove_message()
+        public async Task when_unsuccessfully_handles_message_then_does_not_remove_message()
         {
             EventHandler<MessageReceivedEventArgs> failureHandler = null;
             failureHandler = (s, e) => { this.receiver.MessageReceived -= failureHandler; throw new ArgumentException(); };
 
             this.receiver.MessageReceived += failureHandler;
 
-            this.sender.Send(new Message("test message"));
+            await this.sender.SendAsync(new Message("test message"));
 
             try
             {
@@ -110,14 +111,14 @@ namespace Infrastructure.Sql.IntegrationTests.Messaging.MessageReceiverFixture
         }
 
         [Fact]
-        public void when_sending_message_with_delay_then_receives_message_after_delay()
+        public async Task when_sending_message_with_delay_then_receives_message_after_delay()
         {
             Message message = null;
 
             this.receiver.MessageReceived += (s, e) => { message = e.Message; };
 
             var deliveryDate = DateTime.UtcNow.Add(TimeSpan.FromSeconds(5));
-            this.sender.Send(new Message("test message", deliveryDate));
+            await this.sender.SendAsync(new Message("test message", deliveryDate));
 
             Assert.False(this.receiver.ReceiveMessage());
 
@@ -128,12 +129,12 @@ namespace Infrastructure.Sql.IntegrationTests.Messaging.MessageReceiverFixture
         }
 
         [Fact]
-        public void when_receiving_message_then_other_receivers_cannot_see_message_but_see_other_messages()
+        public async Task when_receiving_message_then_other_receivers_cannot_see_message_but_see_other_messages()
         {
             var secondReceiver = new TestableMessageReceiver(this.connectionFactory);
 
-            this.sender.Send(new Message("message1"));
-            this.sender.Send(new Message("message2"));
+            await this.sender.SendAsync(new Message("message1"));
+            await this.sender.SendAsync(new Message("message2"));
 
             var waitEvent = new AutoResetEvent(false);
             string receiver1Message = null;
@@ -161,11 +162,11 @@ namespace Infrastructure.Sql.IntegrationTests.Messaging.MessageReceiverFixture
         }
 
         [Fact]
-        public void when_receiving_message_then_can_send_new_message()
+        public async Task when_receiving_message_then_can_send_new_message()
         {
             var secondReceiver = new TestableMessageReceiver(this.connectionFactory);
 
-            this.sender.Send(new Message("message1"));
+            await this.sender.SendAsync(new Message("message1"));
 
             var waitEvent = new AutoResetEvent(false);
             string receiver1Message = null;
@@ -185,7 +186,7 @@ namespace Infrastructure.Sql.IntegrationTests.Messaging.MessageReceiverFixture
             ThreadPool.QueueUserWorkItem(_ => { this.receiver.ReceiveMessage(); });
 
             Assert.True(waitEvent.WaitOne(TimeSpan.FromSeconds(10)));
-            this.sender.Send(new Message("message2"));
+            await this.sender.SendAsync(new Message("message2"));
             secondReceiver.ReceiveMessage();
             waitEvent.Set();
 

@@ -32,10 +32,10 @@ namespace Infrastructure.Azure.MessageLog
 
         public AzureEventLogReader(CloudStorageAccount account, string tableName, ITextSerializer serializer)
         {
-            if (account == null) throw new ArgumentNullException("account");
-            if (tableName == null) throw new ArgumentNullException("tableName");
+            if (account == null) throw new ArgumentNullException(nameof(account));
+            if (tableName == null) throw new ArgumentNullException(nameof(tableName));
             if (string.IsNullOrWhiteSpace(tableName)) throw new ArgumentException("tableName");
-            if (serializer == null) throw new ArgumentNullException("serializer");
+            if (serializer == null) throw new ArgumentNullException(nameof(serializer));
 
             this.account = account;
             this.tableName = tableName;

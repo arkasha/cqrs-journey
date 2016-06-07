@@ -14,6 +14,7 @@
 namespace Infrastructure.Messaging
 {
     using System.Collections.Generic;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// An event bus that sends serialized object payloads.
@@ -23,7 +24,7 @@ namespace Infrastructure.Messaging
     /// use the <see cref="IEventBus"/>, but has its own event publishing mechanism.</remarks>
     public interface IEventBus
     {
-        void Publish(Envelope<IEvent> @event);
-        void Publish(IEnumerable<Envelope<IEvent>> events);
+        Task PublishAsync(Envelope<IEvent> @event);
+        Task PublishAsync(IEnumerable<Envelope<IEvent>> events);
     }
 }

@@ -44,7 +44,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventBusIntegration
 
             try
             {
-                bus.Publish(new FooEvent());
+                bus.PublishAsync(new FooEvent());
 
                 e.Wait(TimeoutPeriod);
 
@@ -71,7 +71,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventBusIntegration
 
             try
             {
-                bus.Publish(new FooEvent());
+                bus.PublishAsync(new FooEvent());
 
                 e.Wait(TimeoutPeriod);
 
@@ -98,7 +98,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventBusIntegration
 
             try
             {
-                bus.Publish(new Envelope<IEvent>(new FooEvent()) { CorrelationId = "correlation", MessageId = "message" });
+                bus.PublishAsync(new Envelope<IEvent>(new FooEvent()) { CorrelationId = "correlation", MessageId = "message" });
 
                 e.Wait(TimeoutPeriod);
 
@@ -130,7 +130,7 @@ namespace Infrastructure.Azure.IntegrationTests.EventBusIntegration
 
             try
             {
-                bus.Publish(new BarEvent());
+                bus.PublishAsync(new BarEvent());
 
                 e.Wait(TimeoutPeriod);
                 // Give the other event handler some time.

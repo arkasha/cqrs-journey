@@ -23,12 +23,12 @@ namespace Infrastructure.Messaging
     {
         public static void Send(this ICommandBus bus, ICommand command)
         {
-            bus.Send(new Envelope<ICommand>(command));
+            bus.SendAsync(new Envelope<ICommand>(command));
         }
 
         public static void Send(this ICommandBus bus, IEnumerable<ICommand> commands)
         {
-            bus.Send(commands.Select(x => new Envelope<ICommand>(x)));
+            bus.SendAsync(commands.Select(x => new Envelope<ICommand>(x)));
         }
     }
 }
